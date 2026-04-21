@@ -2,14 +2,14 @@
 
 # Delta Forge
 
-### Write SQL. Get a lakehouse, a graph database, and a geospatial engine.
+### Delta Lake. Iceberg. Graph. Geospatial. Industry formats.<br>One SQL engine. No Spark.
 
-Delta Forge is one SQL engine that does the work of five.
-Read and write **Delta Lake** and **Iceberg V3** natively.
-Run **graph algorithms** and **H3 geospatial** as table functions.
-Parse **FHIR, HL7, and EDI** documents inline.
-Commit your pipelines to Git and get **lineage automatically**.
-Deploy on any cloud. Or your own datacenter. Or fully air-gapped.
+Write a Delta table from Delta Forge. Read it in Spark, in Databricks, in any
+Delta-native tool. Same bytes. Same guarantees. Same Iceberg V3 metadata
+exposed via UniForm. Then take the graph algorithms, the H3 geospatial
+indexing, the FHIR / HL7 / EDI parsers, and the Git-native pipeline engine
+that nobody else puts in the same box — and run them all as SQL against
+the same tables.
 
 [![Website](https://img.shields.io/badge/deltaforge.org-Visit-6366f1?style=flat-square)](https://deltaforge.org)
 [![Install Guide](https://img.shields.io/badge/install-guide-8b5cf6?style=flat-square)](https://deltaforge.org/install)
@@ -21,59 +21,50 @@ Deploy on any cloud. Or your own datacenter. Or fully air-gapped.
 
 ---
 
-## Why Delta Forge exists
+## Why this is different
 
-A modern data team typically stitches together a **lakehouse engine** to touch
-open table formats, a **graph database** for network queries, a **geospatial
-service** for location data, a **lineage tool** nobody fully trusts, and a
-growing pile of format parsers for every industry data spec that shows up.
+**Every other route to a lakehouse drags a cluster behind it.** To touch Delta
+tables you spin up Spark. To touch Iceberg you configure a catalog. To run
+graph queries you stand up a separate graph database. To index GPS points
+you run a geospatial service. To track data lineage you buy a fifth tool
+that still gets it wrong.
 
-Five systems. Five query languages. Five deploy pipelines. Five things that
-break on different Tuesdays.
+**Delta Forge puts all of that into one engine and talks SQL to it.**
 
-**Delta Forge replaces all of that with SQL.**
+| The work                          | Usually needs                          | Delta Forge |
+| --------------------------------- | -------------------------------------- | :---------: |
+| Read/write Delta Lake             | Spark cluster                          |     SQL     |
+| Read/write Iceberg V3             | Iceberg connector + catalog service    |     SQL     |
+| Tables readable by Spark + Databricks | Running Spark yourself              |     SQL     |
+| Graph algorithms (PageRank, etc.) | Separate graph database                |     SQL     |
+| H3 geospatial at scale            | Separate geo service                   |     SQL     |
+| Parse FHIR / HL7 / EDI            | Custom parsers + ETL                   |     SQL     |
+| Data lineage                      | Separate lineage tool + annotations    |   built-in  |
+| Pipeline orchestration            | DAG builder + scheduler                | Git + SQL   |
 
-```
-┌──────────────────────────────────────────────────────────────────┐
-│                                                                  │
-│      Before                                After                 │
-│      ──────                                ─────                  │
-│      Spark cluster     ┐                                         │
-│      Graph database    │                                         │
-│      Geospatial svc    ├──────────►      Delta Forge            │
-│      Lineage tool      │                                         │
-│      Format parsers    ┘                  one SQL engine         │
-│                                                                  │
-└──────────────────────────────────────────────────────────────────┘
-```
+No other tool ships this combination. And none of it requires Spark.
 
 ---
 
-## What it does
-
-### 🔷 Delta Lake and Iceberg, both, native
-
-Read and write the two dominant open table formats from the same engine.
-No connectors. No converters. No second copy of your data. Write to Delta,
-expose the same bytes as Iceberg with UniForm. Time travel, ACID, schema
-evolution, and deletion vectors are all first-class SQL.
+## The promise, in SQL
 
 ```sql
-SELECT region, SUM(revenue)
-FROM orders VERSION AS OF 42
-GROUP BY region;
+-- Write a Delta table. Spark can read it. Databricks can read it.
+CREATE DELTA TABLE customers (
+  id BIGINT, name STRING, tier STRING, lifetime_value DOUBLE
+) LOCATION 's3://lake/customers'
+TBLPROPERTIES ('delta.enableChangeDataFeed' = 'true');
 
+-- Time-travel the same table.
+SELECT name, tier, lifetime_value
+FROM customers VERSION AS OF 42
+WHERE tier = 'Gold';
+
+-- Write Iceberg V3. Same engine, same SQL.
 CREATE ICEBERG TABLE metrics (day DATE, value DOUBLE)
 LOCATION 's3://lake/metrics';
-```
 
-### 🔷 Graph analytics as table functions
-
-Run PageRank, community detection, shortest path, and a dozen more graph
-algorithms directly against your lake tables. Cypher queries sit inside a
-SELECT and return results you can JOIN back to anything.
-
-```sql
+-- Graph algorithms as a table function.
 SELECT c.name, pr.score
 FROM cypher('network', $$
   CALL algo.pageRank({dampingFactor: 0.85})
@@ -81,46 +72,35 @@ FROM cypher('network', $$
 $$) AS (node_id BIGINT, score DOUBLE) pr
 JOIN customers c ON pr.node_id = c.id
 ORDER BY pr.score DESC LIMIT 10;
-```
 
-### 🔷 Billion-point geospatial in one SQL statement
-
-H3 hexagonal indexing built into the engine. Spatial joins, containment,
-proximity, and coverage queries run at lakehouse scale without a separate
-geo service.
-
-```sql
+-- Billion-point geospatial, indexed, joined to the same lake.
 SELECT h3_cell_to_string(h3_latlng_to_cell(lat, lng, 9)) AS hex,
        COUNT(*) AS visits
 FROM gps_points
 GROUP BY hex
 ORDER BY visits DESC;
-```
 
-### 🔷 Industry formats are data types
-
-FHIR R4 resources, HL7 v2 messages, and X12 / EDIFACT transactions parse
-into queryable structures at ingestion. The same `SELECT` that touches a
-Delta table can crack open a FHIR bundle.
-
-### 🔷 Git is your pipeline engine
-
-Commit a `.sql` file. Delta Forge discovers it, schedules it, runs it, and
-builds the dependency graph across your entire workspace from the source
-itself. Lineage is not a separate tool. It is a byproduct of writing SQL.
-
-```sql
+-- A pipeline in 4 lines. Lineage is automatic.
 PIPELINE 'daily_revenue'
   SCHEDULE '0 2 * * *'
   NOTIFY ON FAILURE 'ops@acme.com'
   RETRIES 3;
 ```
 
-### 🔷 Runs where your data lives
+---
 
-AWS, Azure, Google Cloud, on-premises datacenter, air-gapped network.
-No vendor dependencies. No telemetry leaving your perimeter unless you
-opt in. Full data sovereignty.
+## Interoperability you can verify
+
+Delta Forge writes **real Delta Lake** transaction logs and **real Iceberg V3**
+metadata. Not a lookalike, not a bridge. The tables and manifests are
+byte-compatible with the public format specs.
+
+- Write here, read in **any Delta-compatible engine** (Spark, Databricks, or other Delta readers).
+- Write here, read in **any Iceberg-compatible engine** via UniForm.
+- Read anything Spark wrote. Read anything Databricks wrote. Read anything that wrote to spec.
+
+Runs on AWS, Azure, Google Cloud, on-prem, and fully air-gapped.
+No vendor lock-in. No proprietary catalog. No telemetry leaving your perimeter.
 
 ---
 
@@ -159,10 +139,10 @@ scoop install deltaforge-cli deltaforge-mcp deltaforge-compute
 </details>
 
 <details>
-<summary><b>Linux</b> — apt, dnf, or direct download</summary>
+<summary><b>Linux</b> — apt or direct download</summary>
 
 ```sh
-# Debian / Ubuntu (apt repo)
+# Debian / Ubuntu
 curl -fsSL https://deltaforge.org/pubkey.asc \
   | sudo gpg --dearmor -o /etc/apt/keyrings/deltaforge.gpg
 echo "deb [signed-by=/etc/apt/keyrings/deltaforge.gpg] https://apt.deltaforge.org stable main" \
@@ -191,7 +171,7 @@ curl -fsSL https://github.com/deltaforge-org/delta-forge/releases/latest/downloa
 
 ## Verify your download
 
-Every release artifact is signed with the Delta Forge release GPG key and ships next to a `SHA256SUMS` manifest.
+Every release artifact is GPG-signed. Every release ships a `SHA256SUMS` manifest.
 
 ```sh
 curl -fsSL https://github.com/deltaforge-org/delta-forge/raw/main/deltaforge-pubkey.asc \
