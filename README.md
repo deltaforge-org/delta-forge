@@ -2,15 +2,20 @@
 
 # Delta Forge
 
-### Delta Lake. Iceberg. Graph. Geospatial. Industry formats.<br>One SQL engine. Open standards. No Spark.
+### Query a Delta table right now. No cluster to wait on. No Spark. No proprietary format.
 
-Write a Delta table from Delta Forge. Read it in any tool that speaks the
-Delta Lake specification. Same bytes. Same transaction log. Same Iceberg V3
-metadata exposed through UniForm. No proprietary format, no bespoke catalog,
-no side trip into someone else's ecosystem. Then take the graph algorithms,
-the H3 geospatial indexing, the FHIR / HL7 / EDI parsers, and the
-Git-native pipeline engine that nobody else puts in the same box, and run
-them as SQL against the same tables.
+Delta Forge is one SQL engine that reads and writes Delta Lake and Iceberg V3
+natively, runs graph algorithms and H3 geospatial as SQL, parses FHIR / HL7 / EDI
+inline, and builds data lineage from the SQL files you commit to Git.
+
+Write a Delta table here. Read it in any tool that speaks the Delta Lake
+specification. Same bytes. Same transaction log. Same Iceberg V3 metadata
+through UniForm. No bespoke catalog. No side trip into someone else's
+ecosystem. Your tables stay yours, in an open format, on your object storage.
+
+> **This repository distributes the community edition — free, full-featured
+> for everyday lakehouse work.** For commercial and enterprise licensing,
+> see [deltaforge.org/pricing](https://deltaforge.org/pricing).
 
 [![Website](https://img.shields.io/badge/deltaforge.org-Visit-6366f1?style=flat-square)](https://deltaforge.org)
 [![Install Guide](https://img.shields.io/badge/install-guide-8b5cf6?style=flat-square)](https://deltaforge.org/install)
@@ -34,6 +39,7 @@ that still gets it wrong.
 
 | The work                          | Usually needs                          | Delta Forge |
 | --------------------------------- | -------------------------------------- | :---------: |
+| Query a Delta table *right now*   | Start cluster, wait 3-5 min            |   instant   |
 | Read/write Delta Lake             | A Spark cluster                        |     SQL     |
 | Read/write Iceberg V3             | Iceberg connector + catalog service    |     SQL     |
 | Interop with other Delta engines  | Whatever runtime they ship             |  spec-level |
