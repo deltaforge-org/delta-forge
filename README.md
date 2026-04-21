@@ -15,11 +15,11 @@ ecosystem. Your tables stay yours, in an open format, on your object storage.
 
 > **This repository distributes the community edition — free, full-featured
 > for everyday lakehouse work.** For commercial and enterprise licensing,
-> see [deltaforge.org/pricing](https://deltaforge.org/pricing).
+> see [deltaforge.org/pages/pricing.html](https://deltaforge.org/pages/pricing.html).
 
 [![Website](https://img.shields.io/badge/deltaforge.org-Visit-6366f1?style=flat-square)](https://deltaforge.org)
-[![Install Guide](https://img.shields.io/badge/install-guide-8b5cf6?style=flat-square)](https://deltaforge.org/install)
-[![Documentation](https://img.shields.io/badge/docs-read-0ea5e9?style=flat-square)](https://deltaforge.org/docs)
+[![Install](https://img.shields.io/badge/install-guide-8b5cf6?style=flat-square)](#install)
+[![Documentation](https://img.shields.io/badge/docs.deltaforge.org-read-0ea5e9?style=flat-square)](https://docs.deltaforge.org)
 [![Release](https://img.shields.io/github/v/release/deltaforge-org/delta-forge?style=flat-square&label=latest&color=22c55e)](https://github.com/deltaforge-org/delta-forge/releases)
 [![Platforms](https://img.shields.io/badge/Windows%20%7C%20macOS%20%7C%20Linux-supported-334155?style=flat-square)](#install)
 
@@ -57,7 +57,7 @@ None of it locks your data into a proprietary format.
 ## The promise, in SQL
 
 ```sql
--- Write a Delta table. Spark can read it. Databricks can read it.
+-- Write a real Delta Lake table. Any Delta-compliant engine can read it.
 CREATE DELTA TABLE customers (
   id BIGINT, name STRING, tier STRING, lifetime_value DOUBLE
 ) LOCATION 's3://lake/customers'
@@ -118,8 +118,6 @@ your perimeter unless you turn it on.
 
 ## Install
 
-See [**deltaforge.org/install**](https://deltaforge.org/install) for the canonical, up-to-date install commands.
-
 <details open>
 <summary><b>macOS</b> — Homebrew</summary>
 
@@ -151,22 +149,21 @@ scoop install deltaforge-cli deltaforge-mcp deltaforge-compute
 </details>
 
 <details>
-<summary><b>Linux</b> — apt or direct download</summary>
+<summary><b>Linux</b> — direct download (apt repository coming soon)</summary>
 
 ```sh
-# Debian / Ubuntu
-curl -fsSL https://deltaforge.org/pubkey.asc \
-  | sudo gpg --dearmor -o /etc/apt/keyrings/deltaforge.gpg
-echo "deb [signed-by=/etc/apt/keyrings/deltaforge.gpg] https://apt.deltaforge.org stable main" \
-  | sudo tee /etc/apt/sources.list.d/deltaforge.list
-sudo apt update && sudo apt install deltaforge-cli
-
-# Direct download
+# Direct download, latest release
 curl -fsSL https://github.com/deltaforge-org/delta-forge/releases/latest/download/deltaforge-cli-linux-x64.tar.gz \
   | sudo tar -xz -C /usr/local/bin
 ```
 
+An apt-style signed package repository will be published at a later date.
+Until then, grab tarballs from [GitHub Releases](https://github.com/deltaforge-org/delta-forge/releases).
+
 </details>
+
+For the canonical, always-up-to-date install instructions, see the
+[Releases page](https://github.com/deltaforge-org/delta-forge/releases).
 
 ---
 
@@ -199,21 +196,22 @@ gpg --verify deltaforge-cli-<version>-<platform>.tar.gz.sig \
 
 ## Links
 
-| Resource       | Where                                                                    |
-| -------------- | ------------------------------------------------------------------------ |
-| Website        | [deltaforge.org](https://deltaforge.org)                                 |
-| Install guide  | [deltaforge.org/install](https://deltaforge.org/install)                 |
-| Documentation  | [deltaforge.org/docs](https://deltaforge.org/docs)                       |
-| Pricing        | [deltaforge.org/pricing](https://deltaforge.org/pricing)                 |
-| Contact        | [deltaforge.org/contact](https://deltaforge.org/contact)                 |
-| Issues         | [Report a bug](https://github.com/deltaforge-org/delta-forge/issues)     |
-| Releases       | [All versions](https://github.com/deltaforge-org/delta-forge/releases)   |
+| Resource       | Where                                                                                        |
+| -------------- | -------------------------------------------------------------------------------------------- |
+| Website        | [deltaforge.org](https://deltaforge.org)                                                     |
+| Features       | [deltaforge.org/pages/features.html](https://deltaforge.org/pages/features.html)             |
+| Documentation  | [docs.deltaforge.org](https://docs.deltaforge.org)                                           |
+| Console        | [console.deltaforge.org](https://console.deltaforge.org)                                     |
+| Pricing        | [deltaforge.org/pages/pricing.html](https://deltaforge.org/pages/pricing.html)               |
+| Contact        | [deltaforge.org/pages/contact.html](https://deltaforge.org/pages/contact.html)               |
+| Issues         | [Report a bug](https://github.com/deltaforge-org/delta-forge/issues)                         |
+| Releases       | [All versions](https://github.com/deltaforge-org/delta-forge/releases)                       |
 
 ---
 
 ## License
 
 Delta Forge is distributed under the **Delta Forge Community License**.
-See [LICENSE](./LICENSE) and [deltaforge.org/terms](https://deltaforge.org/terms) for the full text.
+See [LICENSE](./LICENSE) and [deltaforge.org/pages/terms-of-service.html](https://deltaforge.org/pages/terms-of-service.html) for the full text.
 
-For commercial and enterprise licensing: [deltaforge.org/contact](https://deltaforge.org/contact).
+For commercial and enterprise licensing: [deltaforge.org/pages/contact.html](https://deltaforge.org/pages/contact.html).
