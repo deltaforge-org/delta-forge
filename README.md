@@ -2,14 +2,15 @@
 
 # Delta Forge
 
-### Delta Lake. Iceberg. Graph. Geospatial. Industry formats.<br>One SQL engine. No Spark.
+### Delta Lake. Iceberg. Graph. Geospatial. Industry formats.<br>One SQL engine. Open standards. No Spark.
 
-Write a Delta table from Delta Forge. Read it in Spark, in Databricks, in any
-Delta-native tool. Same bytes. Same guarantees. Same Iceberg V3 metadata
-exposed via UniForm. Then take the graph algorithms, the H3 geospatial
-indexing, the FHIR / HL7 / EDI parsers, and the Git-native pipeline engine
-that nobody else puts in the same box — and run them all as SQL against
-the same tables.
+Write a Delta table from Delta Forge. Read it in any tool that speaks the
+Delta Lake specification. Same bytes. Same transaction log. Same Iceberg V3
+metadata exposed through UniForm. No proprietary format, no bespoke catalog,
+no side trip into someone else's ecosystem. Then take the graph algorithms,
+the H3 geospatial indexing, the FHIR / HL7 / EDI parsers, and the
+Git-native pipeline engine that nobody else puts in the same box, and run
+them as SQL against the same tables.
 
 [![Website](https://img.shields.io/badge/deltaforge.org-Visit-6366f1?style=flat-square)](https://deltaforge.org)
 [![Install Guide](https://img.shields.io/badge/install-guide-8b5cf6?style=flat-square)](https://deltaforge.org/install)
@@ -33,16 +34,17 @@ that still gets it wrong.
 
 | The work                          | Usually needs                          | Delta Forge |
 | --------------------------------- | -------------------------------------- | :---------: |
-| Read/write Delta Lake             | Spark cluster                          |     SQL     |
+| Read/write Delta Lake             | A Spark cluster                        |     SQL     |
 | Read/write Iceberg V3             | Iceberg connector + catalog service    |     SQL     |
-| Tables readable by Spark + Databricks | Running Spark yourself              |     SQL     |
+| Interop with other Delta engines  | Whatever runtime they ship             |  spec-level |
 | Graph algorithms (PageRank, etc.) | Separate graph database                |     SQL     |
 | H3 geospatial at scale            | Separate geo service                   |     SQL     |
 | Parse FHIR / HL7 / EDI            | Custom parsers + ETL                   |     SQL     |
 | Data lineage                      | Separate lineage tool + annotations    |   built-in  |
 | Pipeline orchestration            | DAG builder + scheduler                | Git + SQL   |
 
-No other tool ships this combination. And none of it requires Spark.
+No other tool ships this combination. None of it requires Spark.
+None of it locks your data into a proprietary format.
 
 ---
 
@@ -89,18 +91,22 @@ PIPELINE 'daily_revenue'
 
 ---
 
-## Interoperability you can verify
+## Open standards, verifiable interop
 
 Delta Forge writes **real Delta Lake** transaction logs and **real Iceberg V3**
-metadata. Not a lookalike, not a bridge. The tables and manifests are
-byte-compatible with the public format specs.
+metadata. Not a lookalike, not a bridge, not a translation layer. The tables
+and manifests are byte-compatible with the public Delta Lake and Apache
+Iceberg V3 specifications.
 
-- Write here, read in **any Delta-compatible engine** (Spark, Databricks, or other Delta readers).
-- Write here, read in **any Iceberg-compatible engine** via UniForm.
-- Read anything Spark wrote. Read anything Databricks wrote. Read anything that wrote to spec.
+- Write here. Read anywhere that implements the Delta spec (Spark, Databricks, Trino, Flink, Polars, or any other conformant reader).
+- Write here. Read anywhere that implements the Iceberg spec via UniForm.
+- Read anything any conformant engine wrote.
+- Walk away whenever you want. Your tables are on your object storage,
+  in an open format, owned by you.
 
 Runs on AWS, Azure, Google Cloud, on-prem, and fully air-gapped.
-No vendor lock-in. No proprietary catalog. No telemetry leaving your perimeter.
+No proprietary catalog. No vendor dependency. No telemetry leaving
+your perimeter unless you turn it on.
 
 ---
 
