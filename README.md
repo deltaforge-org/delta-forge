@@ -18,7 +18,7 @@ ecosystem. Your tables stay yours, in an open format, on your object storage.
 > see [deltaforge.org/pages/pricing.html](https://deltaforge.org/pages/pricing.html).
 
 [![Website](https://img.shields.io/badge/deltaforge.org-Visit-6366f1?style=flat-square)](https://deltaforge.org)
-[![Install](https://img.shields.io/badge/install-guide-8b5cf6?style=flat-square)](#install)
+[![Install](https://img.shields.io/badge/install-guide-8b5cf6?style=flat-square)](https://deltaforge.org/pages/install.html)
 [![Documentation](https://img.shields.io/badge/docs.deltaforge.org-read-0ea5e9?style=flat-square)](https://docs.deltaforge.org)
 [![Release](https://img.shields.io/github/v/release/deltaforge-org/delta-forge?style=flat-square&label=latest&color=22c55e)](https://github.com/deltaforge-org/delta-forge/releases)
 [![Platforms](https://img.shields.io/badge/Windows%20%7C%20macOS%20%7C%20Linux-supported-334155?style=flat-square)](#install)
@@ -162,8 +162,8 @@ Until then, grab tarballs from [GitHub Releases](https://github.com/deltaforge-o
 
 </details>
 
-For the canonical, always-up-to-date install instructions, see the
-[Releases page](https://github.com/deltaforge-org/delta-forge/releases).
+For the canonical, always-up-to-date install instructions, see
+[**deltaforge.org/pages/install.html**](https://deltaforge.org/pages/install.html).
 
 ---
 
@@ -199,6 +199,7 @@ gpg --verify deltaforge-cli-<version>-<platform>.tar.gz.sig \
 | Resource       | Where                                                                                        |
 | -------------- | -------------------------------------------------------------------------------------------- |
 | Website        | [deltaforge.org](https://deltaforge.org)                                                     |
+| Install        | [deltaforge.org/pages/install.html](https://deltaforge.org/pages/install.html)               |
 | Features       | [deltaforge.org/pages/features.html](https://deltaforge.org/pages/features.html)             |
 | Documentation  | [docs.deltaforge.org](https://docs.deltaforge.org)                                           |
 | Console        | [console.deltaforge.org](https://console.deltaforge.org)                                     |
