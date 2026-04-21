@@ -2,67 +2,150 @@
 
 # Delta Forge
 
-### Your entire data stack. One unified platform.
+### Write SQL. Get a lakehouse, a graph database, and a geospatial engine.
 
-Graph your tables. Index a billion GPS points. Travel back to version 42.
-Parse a FHIR document in the same query that joins an Iceberg snapshot.
-Commit the pipeline to Git and get lineage automatically.
+Delta Forge is one SQL engine that does the work of five.
+Read and write **Delta Lake** and **Iceberg V3** natively.
+Run **graph algorithms** and **H3 geospatial** as table functions.
+Parse **FHIR, HL7, and EDI** documents inline.
+Commit your pipelines to Git and get **lineage automatically**.
+Deploy on any cloud. Or your own datacenter. Or fully air-gapped.
 
 [![Website](https://img.shields.io/badge/deltaforge.org-Visit-6366f1?style=flat-square)](https://deltaforge.org)
 [![Install Guide](https://img.shields.io/badge/install-guide-8b5cf6?style=flat-square)](https://deltaforge.org/install)
 [![Documentation](https://img.shields.io/badge/docs-read-0ea5e9?style=flat-square)](https://deltaforge.org/docs)
 [![Release](https://img.shields.io/github/v/release/deltaforge-org/delta-forge?style=flat-square&label=latest&color=22c55e)](https://github.com/deltaforge-org/delta-forge/releases)
-[![Platforms](https://img.shields.io/badge/platforms-Windows%20%7C%20macOS%20%7C%20Linux-334155?style=flat-square)](#install)
+[![Platforms](https://img.shields.io/badge/Windows%20%7C%20macOS%20%7C%20Linux-supported-334155?style=flat-square)](#install)
 
 </div>
 
 ---
 
+## Why Delta Forge exists
+
+A modern data team typically stitches together a **lakehouse engine** to touch
+open table formats, a **graph database** for network queries, a **geospatial
+service** for location data, a **lineage tool** nobody fully trusts, and a
+growing pile of format parsers for every industry data spec that shows up.
+
+Five systems. Five query languages. Five deploy pipelines. Five things that
+break on different Tuesdays.
+
+**Delta Forge replaces all of that with SQL.**
+
+```
+┌──────────────────────────────────────────────────────────────────┐
+│                                                                  │
+│      Before                                After                 │
+│      ──────                                ─────                  │
+│      Spark cluster     ┐                                         │
+│      Graph database    │                                         │
+│      Geospatial svc    ├──────────►      Delta Forge            │
+│      Lineage tool      │                                         │
+│      Format parsers    ┘                  one SQL engine         │
+│                                                                  │
+└──────────────────────────────────────────────────────────────────┘
+```
+
+---
+
 ## What it does
 
-One SQL engine that reads and writes **Delta Lake** and **Apache Iceberg V3**
-natively, runs **graph algorithms** and **H3 geospatial** as table functions,
-parses **FHIR / HL7 / EDI** inline, and builds **data lineage** automatically
-from the SQL files you commit to Git. Deploys on your cloud, your datacenter,
-or fully air-gapped.
+### 🔷 Delta Lake and Iceberg, both, native
 
-### Capabilities
+Read and write the two dominant open table formats from the same engine.
+No connectors. No converters. No second copy of your data. Write to Delta,
+expose the same bytes as Iceberg with UniForm. Time travel, ACID, schema
+evolution, and deletion vectors are all first-class SQL.
 
-| Area              | What's in the box                                                                     |
-| ----------------- | ------------------------------------------------------------------------------------- |
-| Open tables       | Delta Lake, Iceberg V3, UniForm, time travel, ACID, schema evolution, deletion vectors |
-| Analytics         | PageRank, community detection, Cypher, H3 spatial indexing, spatial joins             |
-| Pipelines         | Git-native `PIPELINE` SQL command, auto-lineage, scheduling, retries, SLAs            |
-| Industry formats  | FHIR R4, HL7 v2, X12 / EDIFACT parsed as SQL                                          |
-| Interfaces        | Desktop GUI, CLI, Model Context Protocol server, VS Code extension                    |
-| Deployment        | AWS, Azure, Google Cloud, on-prem, air-gapped                                         |
+```sql
+SELECT region, SUM(revenue)
+FROM orders VERSION AS OF 42
+GROUP BY region;
+
+CREATE ICEBERG TABLE metrics (day DATE, value DOUBLE)
+LOCATION 's3://lake/metrics';
+```
+
+### 🔷 Graph analytics as table functions
+
+Run PageRank, community detection, shortest path, and a dozen more graph
+algorithms directly against your lake tables. Cypher queries sit inside a
+SELECT and return results you can JOIN back to anything.
+
+```sql
+SELECT c.name, pr.score
+FROM cypher('network', $$
+  CALL algo.pageRank({dampingFactor: 0.85})
+  YIELD node_id, score RETURN node_id, score
+$$) AS (node_id BIGINT, score DOUBLE) pr
+JOIN customers c ON pr.node_id = c.id
+ORDER BY pr.score DESC LIMIT 10;
+```
+
+### 🔷 Billion-point geospatial in one SQL statement
+
+H3 hexagonal indexing built into the engine. Spatial joins, containment,
+proximity, and coverage queries run at lakehouse scale without a separate
+geo service.
+
+```sql
+SELECT h3_cell_to_string(h3_latlng_to_cell(lat, lng, 9)) AS hex,
+       COUNT(*) AS visits
+FROM gps_points
+GROUP BY hex
+ORDER BY visits DESC;
+```
+
+### 🔷 Industry formats are data types
+
+FHIR R4 resources, HL7 v2 messages, and X12 / EDIFACT transactions parse
+into queryable structures at ingestion. The same `SELECT` that touches a
+Delta table can crack open a FHIR bundle.
+
+### 🔷 Git is your pipeline engine
+
+Commit a `.sql` file. Delta Forge discovers it, schedules it, runs it, and
+builds the dependency graph across your entire workspace from the source
+itself. Lineage is not a separate tool. It is a byproduct of writing SQL.
+
+```sql
+PIPELINE 'daily_revenue'
+  SCHEDULE '0 2 * * *'
+  NOTIFY ON FAILURE 'ops@acme.com'
+  RETRIES 3;
+```
+
+### 🔷 Runs where your data lives
+
+AWS, Azure, Google Cloud, on-premises datacenter, air-gapped network.
+No vendor dependencies. No telemetry leaving your perimeter unless you
+opt in. Full data sovereignty.
 
 ---
 
 ## Install
 
-See [**deltaforge.org/install**](https://deltaforge.org/install) for the full, up-to-date list of channels per platform.
-
-### Quick install
+See [**deltaforge.org/install**](https://deltaforge.org/install) for the canonical, up-to-date install commands.
 
 <details open>
-<summary><b>macOS</b> (Homebrew)</summary>
+<summary><b>macOS</b> — Homebrew</summary>
 
 ```sh
 brew tap deltaforge-org/tap
-brew install --cask deltaforge           # Desktop application
-brew install deltaforge-cli              # CLI
-brew install deltaforge-mcp              # Model Context Protocol server
-brew install deltaforge-compute          # Compute node
+brew install --cask deltaforge        # Desktop application
+brew install deltaforge-cli           # Command-line
+brew install deltaforge-mcp           # Model Context Protocol server
+brew install deltaforge-compute       # Compute node
 ```
 
 </details>
 
 <details>
-<summary><b>Windows</b> (winget or Scoop)</summary>
+<summary><b>Windows</b> — winget or Scoop</summary>
 
 ```powershell
-# winget (recommended)
+# winget
 winget install DeltaForge.Desktop
 winget install DeltaForge.Cli
 winget install DeltaForge.Mcp
@@ -76,19 +159,19 @@ scoop install deltaforge-cli deltaforge-mcp deltaforge-compute
 </details>
 
 <details>
-<summary><b>Linux</b> (apt, dnf, or direct download)</summary>
+<summary><b>Linux</b> — apt, dnf, or direct download</summary>
 
 ```sh
-# Debian / Ubuntu (once apt repo is live)
+# Debian / Ubuntu (apt repo)
 curl -fsSL https://deltaforge.org/pubkey.asc \
   | sudo gpg --dearmor -o /etc/apt/keyrings/deltaforge.gpg
 echo "deb [signed-by=/etc/apt/keyrings/deltaforge.gpg] https://apt.deltaforge.org stable main" \
   | sudo tee /etc/apt/sources.list.d/deltaforge.list
 sudo apt update && sudo apt install deltaforge-cli
 
-# Direct download (works today)
+# Direct download
 curl -fsSL https://github.com/deltaforge-org/delta-forge/releases/latest/download/deltaforge-cli-linux-x64.tar.gz \
-  | tar -xz -C /usr/local/bin deltaforge-cli
+  | sudo tar -xz -C /usr/local/bin
 ```
 
 </details>
@@ -106,16 +189,14 @@ curl -fsSL https://github.com/deltaforge-org/delta-forge/releases/latest/downloa
 
 ---
 
-## Verify downloads
+## Verify your download
 
-Every release artifact is signed with the Delta Forge release GPG key and accompanied by a `SHA256SUMS` file.
+Every release artifact is signed with the Delta Forge release GPG key and ships next to a `SHA256SUMS` manifest.
 
 ```sh
-# Import the signing key (one-time)
 curl -fsSL https://github.com/deltaforge-org/delta-forge/raw/main/deltaforge-pubkey.asc \
   | gpg --import
 
-# Verify an artifact
 gpg --verify deltaforge-cli-<version>-<platform>.tar.gz.sig \
              deltaforge-cli-<version>-<platform>.tar.gz
 ```
@@ -124,54 +205,17 @@ gpg --verify deltaforge-cli-<version>-<platform>.tar.gz.sig \
 
 ---
 
-## A taste of the SQL
-
-```sql
--- Delta Lake + time travel
-SELECT name, tier, lifetime_value
-FROM customers VERSION AS OF 42
-WHERE tier = 'Gold';
-
--- Iceberg V3 alongside Delta, same engine
-CREATE ICEBERG TABLE metrics (
-  day DATE, value DOUBLE
-) LOCATION 's3://lake/metrics';
-
--- Graph analytics as a table function
-SELECT c.name, pr.score
-FROM cypher('network', $$
-  CALL algo.pageRank({dampingFactor: 0.85})
-  YIELD node_id, score RETURN node_id, score
-$$) AS (node_id BIGINT, score DOUBLE) pr
-JOIN customers c ON pr.node_id = c.id
-ORDER BY pr.score DESC LIMIT 10;
-
--- H3 geospatial indexing
-SELECT h3_cell_to_string(h3_latlng_to_cell(lat, lng, 9)) AS hex,
-       COUNT(*) AS visits
-FROM gps_points
-GROUP BY hex ORDER BY visits DESC;
-
--- A pipeline, scheduled and lineage-traced
-PIPELINE 'daily_revenue'
-  SCHEDULE '0 2 * * *'
-  NOTIFY ON FAILURE 'ops@acme.com'
-  RETRIES 3;
-```
-
----
-
 ## Links
 
-| Resource       | Where                                                                                        |
-| -------------- | -------------------------------------------------------------------------------------------- |
-| Website        | [deltaforge.org](https://deltaforge.org)                                                     |
-| Install guide  | [deltaforge.org/install](https://deltaforge.org/install)                                     |
-| Documentation  | [deltaforge.org/docs](https://deltaforge.org/docs)                                           |
-| Pricing        | [deltaforge.org/pricing](https://deltaforge.org/pricing)                                     |
-| Contact        | [deltaforge.org/contact](https://deltaforge.org/contact)                                     |
-| Issues         | [github.com/deltaforge-org/delta-forge/issues](https://github.com/deltaforge-org/delta-forge/issues) |
-| Releases       | [github.com/deltaforge-org/delta-forge/releases](https://github.com/deltaforge-org/delta-forge/releases) |
+| Resource       | Where                                                                    |
+| -------------- | ------------------------------------------------------------------------ |
+| Website        | [deltaforge.org](https://deltaforge.org)                                 |
+| Install guide  | [deltaforge.org/install](https://deltaforge.org/install)                 |
+| Documentation  | [deltaforge.org/docs](https://deltaforge.org/docs)                       |
+| Pricing        | [deltaforge.org/pricing](https://deltaforge.org/pricing)                 |
+| Contact        | [deltaforge.org/contact](https://deltaforge.org/contact)                 |
+| Issues         | [Report a bug](https://github.com/deltaforge-org/delta-forge/issues)     |
+| Releases       | [All versions](https://github.com/deltaforge-org/delta-forge/releases)   |
 
 ---
 
@@ -180,4 +224,4 @@ PIPELINE 'daily_revenue'
 Delta Forge is distributed under the **Delta Forge Community License**.
 See [LICENSE](./LICENSE) and [deltaforge.org/terms](https://deltaforge.org/terms) for the full text.
 
-For commercial licensing and enterprise use: [deltaforge.org/contact](https://deltaforge.org/contact).
+For commercial and enterprise licensing: [deltaforge.org/contact](https://deltaforge.org/contact).
