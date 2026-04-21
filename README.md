@@ -149,16 +149,20 @@ scoop install deltaforge-cli deltaforge-mcp deltaforge-compute
 </details>
 
 <details>
-<summary><b>Linux</b> — direct download (apt repository coming soon)</summary>
+<summary><b>Linux</b> — one-line installer (apt repository coming soon)</summary>
 
 ```sh
-# Direct download, latest release
-curl -fsSL https://github.com/deltaforge-org/delta-forge/releases/latest/download/deltaforge-cli-linux-x64.tar.gz \
-  | sudo tar -xz -C /usr/local/bin
+# One-liner: detects OS + arch, installs deltaforge-cli to /usr/local/bin
+curl -fsSL https://deltaforge.org/install.sh | sh
+
+# Pick a different package or install location
+curl -fsSL https://deltaforge.org/install.sh | sh -s -- --pkg deltaforge-mcp
+curl -fsSL https://deltaforge.org/install.sh | sh -s -- --prefix $HOME/.local/bin
 ```
 
-An apt-style signed package repository will be published at a later date.
-Until then, grab tarballs from [GitHub Releases](https://github.com/deltaforge-org/delta-forge/releases).
+Prefer to grab tarballs directly? They're on the
+[Releases page](https://github.com/deltaforge-org/delta-forge/releases).
+A signed apt repository is on the way.
 
 </details>
 
@@ -183,8 +187,7 @@ For the canonical, always-up-to-date install instructions, see
 Every release artifact is GPG-signed. Every release ships a `SHA256SUMS` manifest.
 
 ```sh
-curl -fsSL https://github.com/deltaforge-org/delta-forge/raw/main/deltaforge-pubkey.asc \
-  | gpg --import
+curl -fsSL https://deltaforge.org/pubkey.asc | gpg --import
 
 gpg --verify deltaforge-cli-<version>-<platform>.tar.gz.sig \
              deltaforge-cli-<version>-<platform>.tar.gz
