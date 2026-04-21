@@ -5,7 +5,7 @@ Binary releases and install instructions for the Delta Forge community edition.
 - Website: [deltaforge.org](https://deltaforge.org)
 - Install guide: [deltaforge.org/install](https://deltaforge.org/install)
 - Documentation: [deltaforge.org/docs](https://deltaforge.org/docs)
-- Issues: report bugs and feature requests in the [Issues tab](https://github.com/deltaforge-org/deltaforge/issues) of this repository
+- Issues: report bugs and feature requests in the [Issues tab](https://github.com/deltaforge-org/delta-forge/issues) of this repository
 
 ## Packages
 
@@ -24,7 +24,7 @@ See [deltaforge.org/install](https://deltaforge.org/install) for the full, up-to
 
 ## Releases
 
-Release binaries are attached to this repository's [Releases](https://github.com/deltaforge-org/deltaforge/releases), with SHA256 checksums and, where applicable, GPG signatures.
+Release binaries are attached to this repository's [Releases](https://github.com/deltaforge-org/delta-forge/releases), with SHA256 checksums and, where applicable, GPG signatures.
 
 ## License
 
