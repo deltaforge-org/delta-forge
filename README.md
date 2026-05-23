@@ -13,7 +13,7 @@ specification. Same bytes. Same transaction log. Same Iceberg V3 metadata
 through UniForm. No bespoke catalog. No side trip into someone else's
 ecosystem. Your tables stay yours, in an open format, on your object storage.
 
-> **This repository distributes the community edition — free, full-featured
+> **This repository distributes the community edition: free, full-featured
 > for everyday lakehouse work.** For commercial and enterprise licensing,
 > see [deltaforge.org/pages/pricing.html](https://deltaforge.org/pages/pricing.html).
 
@@ -37,17 +37,17 @@ that still gets it wrong.
 
 **Delta Forge puts all of that into one engine and talks SQL to it.**
 
-| The work                          | Usually needs                          | Delta Forge |
-| --------------------------------- | -------------------------------------- | :---------: |
-| Query a Delta table *right now*   | Start cluster, wait 3-5 min            |   instant   |
-| Read/write Delta Lake             | A Spark cluster                        |     SQL     |
-| Read/write Iceberg V3             | Iceberg connector + catalog service    |     SQL     |
-| Interop with other Delta engines  | Whatever runtime they ship             |  spec-level |
-| Graph algorithms (PageRank, etc.) | Separate graph database                |     SQL     |
-| H3 geospatial at scale            | Separate geo service                   |     SQL     |
-| Parse FHIR / HL7 / EDI            | Custom parsers + ETL                   |     SQL     |
-| Data lineage                      | Separate lineage tool + annotations    |   built-in  |
-| Pipeline orchestration            | DAG builder + scheduler                | Git + SQL   |
+| The work                                                                          | Usually needs                          | Delta Forge |
+| --------------------------------------------------------------------------------- | -------------------------------------- | :---------: |
+| Query a Delta table *right now*                                                   | Start cluster, wait 3-5 min            |   instant   |
+| [Read/write Delta Lake](https://deltaforge.org/pages/table-format.html)           | A Spark cluster                        |     SQL     |
+| [Read/write Iceberg V3](https://deltaforge.org/pages/iceberg.html)                | Iceberg connector + catalog service    |     SQL     |
+| [Interop with other Delta engines](https://deltaforge.org/pages/conformance.html) | Whatever runtime they ship             |  spec-level |
+| [Graph algorithms (PageRank, etc.)](https://deltaforge.org/pages/graph.html)      | Separate graph database                |     SQL     |
+| [H3 geospatial at scale](https://deltaforge.org/pages/h3-geospatial.html)         | Separate geo service                   |     SQL     |
+| [Parse FHIR / HL7 / EDI](https://deltaforge.org/pages/healthcare.html)            | Custom parsers + ETL                   |     SQL     |
+| [Data lineage](https://deltaforge.org/pages/pipeline-workflow.html)               | Separate lineage tool + annotations    |   built-in  |
+| [Pipeline orchestration](https://deltaforge.org/pages/pipeline-workflow.html)     | DAG builder + scheduler                | Git + SQL   |
 
 No other tool ships this combination. None of it requires Spark.
 None of it locks your data into a proprietary format.
@@ -119,7 +119,7 @@ your perimeter unless you turn it on.
 ## Install
 
 <details open>
-<summary><b>macOS</b> — Homebrew</summary>
+<summary><b>macOS</b> with Homebrew</summary>
 
 ```sh
 brew tap deltaforge-org/tap
@@ -132,7 +132,7 @@ brew install deltaforge-compute       # Compute node
 </details>
 
 <details>
-<summary><b>Windows</b> — winget or Scoop</summary>
+<summary><b>Windows</b> with winget or Scoop</summary>
 
 ```powershell
 # winget
@@ -149,7 +149,7 @@ scoop install deltaforge-cli deltaforge-mcp deltaforge-compute
 </details>
 
 <details>
-<summary><b>Linux</b> — one-line installer (apt repository coming soon)</summary>
+<summary><b>Linux</b> with one-line installer (apt repository coming soon)</summary>
 
 ```sh
 # One-liner: detects OS + arch, installs deltaforge-cli to /usr/local/bin
@@ -199,17 +199,52 @@ gpg --verify deltaforge-cli-<version>-<platform>.tar.gz.sig \
 
 ## Links
 
+### Top-level
+
 | Resource       | Where                                                                                        |
 | -------------- | -------------------------------------------------------------------------------------------- |
 | Website        | [deltaforge.org](https://deltaforge.org)                                                     |
 | Install        | [deltaforge.org/pages/install.html](https://deltaforge.org/pages/install.html)               |
 | Features       | [deltaforge.org/pages/features.html](https://deltaforge.org/pages/features.html)             |
+| Architecture   | [deltaforge.org/pages/architecture.html](https://deltaforge.org/pages/architecture.html)     |
 | Documentation  | [docs.deltaforge.org](https://docs.deltaforge.org)                                           |
 | Console        | [console.deltaforge.org](https://console.deltaforge.org)                                     |
 | Pricing        | [deltaforge.org/pages/pricing.html](https://deltaforge.org/pages/pricing.html)               |
 | Contact        | [deltaforge.org/pages/contact.html](https://deltaforge.org/pages/contact.html)               |
 | Issues         | [Report a bug](https://github.com/deltaforge-org/delta-forge/issues)                         |
 | Releases       | [All versions](https://github.com/deltaforge-org/delta-forge/releases)                       |
+
+### Capabilities (deep links into deltaforge.org)
+
+Every feature exercised by the binaries in this repository has a dedicated page
+on the marketing site. The capability table near the top of this README links
+the headline rows; the table below covers the rest.
+
+| Capability                | Where                                                                                                |
+| ------------------------- | ---------------------------------------------------------------------------------------------------- |
+| SQL engine                | [pages/sql-engine.html](https://deltaforge.org/pages/sql-engine.html)                                |
+| Compute engine            | [pages/compute-engine.html](https://deltaforge.org/pages/compute-engine.html)                        |
+| Control plane             | [pages/control-plane.html](https://deltaforge.org/pages/control-plane.html)                          |
+| Delta Lake table format   | [pages/table-format.html](https://deltaforge.org/pages/table-format.html)                            |
+| Apache Iceberg            | [pages/iceberg.html](https://deltaforge.org/pages/iceberg.html)                                      |
+| Property graphs (Cypher)  | [pages/graph.html](https://deltaforge.org/pages/graph.html)                                          |
+| H3 geospatial             | [pages/h3-geospatial.html](https://deltaforge.org/pages/h3-geospatial.html)                          |
+| Row-level indexing        | [pages/indexing.html](https://deltaforge.org/pages/indexing.html)                                    |
+| CREATE CHART (SQL viz)    | [pages/charting.html](https://deltaforge.org/pages/charting.html)                                    |
+| UDFs and PL/pgSQL         | [pages/udf-system.html](https://deltaforge.org/pages/udf-system.html)                                |
+| Pipelines and lineage     | [pages/pipeline-workflow.html](https://deltaforge.org/pages/pipeline-workflow.html)                  |
+| Data connectors           | [pages/connectors.html](https://deltaforge.org/pages/connectors.html)                                |
+| Pseudonymisation (GDPR)   | [pages/pseudonymisation.html](https://deltaforge.org/pages/pseudonymisation.html)                    |
+| Healthcare formats        | [pages/healthcare.html](https://deltaforge.org/pages/healthcare.html)                                |
+| FHIR R4 / R5              | [pages/fhir.html](https://deltaforge.org/pages/fhir.html)                                            |
+| X12 / EDIFACT / TRADACOMS | [pages/edi.html](https://deltaforge.org/pages/edi.html)                                              |
+| Security and audit        | [pages/security.html](https://deltaforge.org/pages/security.html)                                    |
+| ODBC driver               | [pages/odbc.html](https://deltaforge.org/pages/odbc.html)                                            |
+| ADBC driver + Power BI    | [pages/adbc.html](https://deltaforge.org/pages/adbc.html)                                            |
+| BI driver benchmark       | [pages/benchmarks-bi-drivers.html](https://deltaforge.org/pages/benchmarks-bi-drivers.html)          |
+| MCP server for AI agents  | [pages/mcp-server.html](https://deltaforge.org/pages/mcp-server.html)                                |
+| Conformance test suite    | [pages/conformance.html](https://deltaforge.org/pages/conformance.html)                              |
+| Demos and use cases       | [pages/demos.html](https://deltaforge.org/pages/demos.html)                                          |
 
 ---
 
