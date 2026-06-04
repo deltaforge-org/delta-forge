@@ -1,10 +1,10 @@
 <div align="center">
 
-# Delta Forge
+# DeltaForge
 
 ### Query a Delta table right now. No cluster to wait on. No Spark. No proprietary format.
 
-Delta Forge is one SQL engine that reads and writes Delta Lake and Iceberg V3
+DeltaForge is one SQL engine that reads and writes Delta Lake and Iceberg V3
 natively, runs graph algorithms and H3 geospatial as SQL, parses FHIR / HL7 / EDI
 inline, and builds data lineage from the SQL files you commit to Git.
 
@@ -35,9 +35,9 @@ graph queries you stand up a separate graph database. To index GPS points
 you run a geospatial service. To track data lineage you buy a fifth tool
 that still gets it wrong.
 
-**Delta Forge puts all of that into one engine and talks SQL to it.**
+**DeltaForge puts all of that into one engine and talks SQL to it.**
 
-| The work                                                                          | Usually needs                          | Delta Forge |
+| The work                                                                          | Usually needs                          | DeltaForge |
 | --------------------------------------------------------------------------------- | -------------------------------------- | :---------: |
 | Query a Delta table *right now*                                                   | Start cluster, wait 3-5 min            |   instant   |
 | [Read/write Delta Lake](https://deltaforge.org/pages/table-format.html)           | A Spark cluster                        |     SQL     |
@@ -99,7 +99,7 @@ PIPELINE 'daily_revenue'
 
 ## Open standards, verifiable interop
 
-Delta Forge writes **real Delta Lake** transaction logs and **real Iceberg V3**
+DeltaForge writes **real Delta Lake** transaction logs and **real Iceberg V3**
 metadata. Not a lookalike, not a bridge, not a translation layer. The tables
 and manifests are byte-compatible with the public Delta Lake and Apache
 Iceberg V3 specifications.
@@ -250,7 +250,7 @@ the headline rows; the table below covers the rest.
 
 ## License
 
-Delta Forge is distributed under the **Delta Forge Community License**.
+DeltaForge is distributed under the **DeltaForge Community License**.
 See [LICENSE](./LICENSE) and [deltaforge.org/pages/terms-of-service.html](https://deltaforge.org/pages/terms-of-service.html) for the full text.
 
 For commercial and enterprise licensing: [deltaforge.org/pages/contact.html](https://deltaforge.org/pages/contact.html).
