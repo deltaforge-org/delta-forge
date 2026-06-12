@@ -9,6 +9,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 Initial repository bootstrap. No public releases yet.
 
+## [1.0.5] - 2026-06-12
+
+<!-- built from 2b86b4dbd3fd28ff5c5e856da53c822945ad13f5 -->
+
 ## [1.0.4] - 2026-06-09
 
 The DeltaForge platform: the desktop app, the command-line interface, and the control-plane server.
