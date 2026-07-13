@@ -103,6 +103,17 @@ Parameters:
     Default: '16'
     Description: PostgreSQL major version.
 
+  DbBackupRetentionDays:
+    Type: Number
+    Default: 7
+    MinValue: 0
+    MaxValue: 35
+    Description: >-
+      RDS automated-backup retention in days (0 disables backups). Default 7 for
+      production. Set 0 on AWS Free Tier accounts, whose plan caps the retention
+      period below 7 ("backup retention period exceeds the maximum available to
+      free tier customers").
+
   EnableHttps:
     Type: String
     Default: 'true'
@@ -359,7 +370,7 @@ Resources:
       VPCSecurityGroups: [!Ref DbSecurityGroup]
       PubliclyAccessible: false
       MultiAZ: false
-      BackupRetentionPeriod: 7
+      BackupRetentionPeriod: !Ref DbBackupRetentionDays
       DeletionProtection: false
 
   # ----------------------------- Storage ------------------------------------
