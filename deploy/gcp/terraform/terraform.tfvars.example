@@ -1,0 +1,42 @@
+# Copy to terraform.tfvars and fill in. terraform.tfvars is gitignored.
+
+project_id  = "my-gcp-project"
+region      = "europe-west1"
+zone        = "europe-west1-b"
+
+# DeltaForge license key (required).
+license_key = "DF1...."
+
+# Container image. Public images and Artifact Registry images reachable by the
+# VM service account need no registry_credentials.
+image = "ghcr.io/deltaforge-org/platform:latest"
+
+# Seeded accounts. Passwords auto-generate (stored in Secret Manager) if omitted.
+admin_email    = "admin@yourcompany.com"
+engineer_email = "engineer@yourcompany.com"
+
+# Sizing (defaults shown).
+# machine_type = "e2-standard-4"
+# data_disk_gb = 100
+# db_tier      = "db-custom-1-3840"
+# db_disk_gb   = 32
+
+# HTTPS. Leave custom_domain empty to use the static IP with Caddy's internal
+# cert (browser warning; curl -k). Set a domain for a trusted Let's Encrypt cert
+# and point its DNS A record at the instance_ip output after the first apply.
+enable_https  = true
+custom_domain = ""
+
+# Optional private registry (e.g. ghcr.io with a token):
+# registry_credentials = {
+#   server   = "ghcr.io"
+#   username = "my-user"
+#   password = "ghp_xxx"
+# }
+
+# Optional SMTP mailer. Leave smtp_host empty to log mail instead of sending.
+# smtp_host     = "smtp.example.com"
+# smtp_port     = 587
+# smtp_username = "apikey"
+# smtp_password = "..."
+# mail_from     = "deltaforge@yourcompany.com"

@@ -1,0 +1,771 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: >-
+  DeltaForge on AWS - single Platform node, fully self-contained. Provisions and
+  bootstraps DeltaForge with no manual steps: an RDS for PostgreSQL catalog (TLS),
+  an EFS file system for /data (config + git workspace clones), an S3 bucket for
+  Delta/zone table data, AWS Secrets Manager for generated secrets, and an ECS
+  Fargate task (the Platform container, headless) with a task IAM role that reads
+  S3 and a Caddy sidecar that terminates HTTPS. Fronted by a Network Load Balancer
+  with a stable DNS name. This is the AWS analogue of deploy/azure/main.bicep; the
+  container env contract is identical.
+
+# ---------------------------------------------------------------------------
+# Parameters - this template IS the deployment interface (mirrors the Bicep).
+# On AWS Marketplace these surface as the launch form fields.
+# ---------------------------------------------------------------------------
+Parameters:
+  NamePrefix:
+    Type: String
+    Default: deltaforge
+    AllowedPattern: '^[a-z][a-z0-9-]{1,14}$'
+    Description: Short prefix for resource names (lowercase letters, digits, hyphens).
+
+  Image:
+    Type: String
+    Default: ghcr.io/deltaforge-org/platform:latest
+    Description: DeltaForge Platform container image (ECR, ghcr.io, or any registry).
+
+  RegistryCredentialsArn:
+    Type: String
+    Default: ''
+    Description: >-
+      Optional. ARN of a Secrets Manager secret holding {"username","password"}
+      for a private non-ECR registry (e.g. ghcr.io). Leave empty for public or
+      ECR images (ECR is authorized via the execution role).
+
+  LicenseKey:
+    Type: String
+    NoEcho: true
+    Default: ''
+    Description: >-
+      DeltaForge license key. Leave empty to auto-provision a Community license on
+      first boot: the task presents its IAM-role identity (sts:GetCallerIdentity)
+      to the DeltaForge console (account-attested), so no pre-obtained key is
+      needed. Set a key only to pin a purchased or higher tier.
+
+  ConsoleUrl:
+    Type: String
+    Default: https://console.deltaforge.org
+    Description: DeltaForge console (license service) base URL used for account-attested auto-provisioning when LicenseKey is empty.
+
+  AdminEmail:
+    Type: String
+    Default: admin@deltaforge.local
+    Description: Seeded admin account email.
+
+  EngineerEmail:
+    Type: String
+    Default: engineer@deltaforge.local
+    Description: Seeded engineer account email.
+
+  AdminPassword:
+    Type: String
+    NoEcho: true
+    MinLength: 12
+    Description: Admin account password (>= 12 chars).
+
+  EngineerPassword:
+    Type: String
+    NoEcho: true
+    MinLength: 12
+    Description: Engineer account password (>= 12 chars).
+
+  PgAdminPassword:
+    Type: String
+    NoEcho: true
+    MinLength: 12
+    Description: PostgreSQL administrator password (>= 12 chars).
+
+  TaskCpu:
+    Type: String
+    Default: '4096'
+    AllowedValues: ['1024', '2048', '4096', '8192', '16384']
+    Description: Fargate task vCPU units (1024 = 1 vCPU). Shared by platform + Caddy.
+
+  TaskMemory:
+    Type: String
+    Default: '8192'
+    Description: Fargate task memory (MiB). Must be a valid pairing with TaskCpu.
+
+  DbInstanceClass:
+    Type: String
+    Default: db.t3.small
+    Description: RDS PostgreSQL instance class.
+
+  DbAllocatedStorage:
+    Type: Number
+    Default: 32
+    MinValue: 20
+    Description: RDS PostgreSQL storage (GiB).
+
+  DbEngineVersion:
+    Type: String
+    Default: '16'
+    Description: PostgreSQL major version.
+
+  EnableHttps:
+    Type: String
+    Default: 'true'
+    AllowedValues: ['true', 'false']
+    Description: >-
+      Front the console/API with a Caddy sidecar terminating HTTPS. true for
+      cloud; false exposes plain HTTP (console 3031, control plane 3000).
+
+  CustomDomain:
+    Type: String
+    Default: ''
+    Description: >-
+      Custom domain for a trusted Let's Encrypt certificate. Point its DNS
+      (CNAME) at the load balancer DNS after first deploy. Empty = use the load
+      balancer DNS name with Caddy's internal cert (browser warning; curl -k).
+
+  CaddyImage:
+    Type: String
+    Default: caddy:2.8-alpine
+    Description: Caddy image for the TLS sidecar.
+
+  VpcCidr:
+    Type: String
+    Default: 10.42.0.0/16
+    Description: CIDR for the VPC created for this deployment.
+
+  # ---- Optional SMTP mailer (mirrors the Bicep smtp* params) ----
+  SmtpHost:
+    Type: String
+    Default: ''
+    Description: SMTP server host. Leave empty to skip mailer configuration (mail is logged).
+  SmtpPort:
+    Type: Number
+    Default: 587
+    Description: SMTP port.
+  SmtpUsername:
+    Type: String
+    Default: ''
+    Description: SMTP username.
+  SmtpPassword:
+    Type: String
+    NoEcho: true
+    Default: ''
+    Description: SMTP password.
+  MailFrom:
+    Type: String
+    Default: ''
+    Description: From address for outbound mail (defaults to SmtpUsername if empty).
+  MailFromName:
+    Type: String
+    Default: DeltaForge
+    Description: From display name for outbound mail.
+  SmtpStartTls:
+    Type: String
+    Default: 'true'
+    AllowedValues: ['true', 'false']
+    Description: Use STARTTLS for SMTP.
+
+Metadata:
+  AWS::CloudFormation::Interface:
+    ParameterGroups:
+      - Label: { default: Core }
+        Parameters: [NamePrefix, Image, RegistryCredentialsArn, LicenseKey]
+      - Label: { default: Seeded accounts }
+        Parameters: [AdminEmail, AdminPassword, EngineerEmail, EngineerPassword]
+      - Label: { default: Compute }
+        Parameters: [TaskCpu, TaskMemory]
+      - Label: { default: PostgreSQL }
+        Parameters: [DbInstanceClass, DbAllocatedStorage, DbEngineVersion, PgAdminPassword]
+      - Label: { default: HTTPS front }
+        Parameters: [EnableHttps, CustomDomain, CaddyImage]
+      - Label: { default: Networking }
+        Parameters: [VpcCidr]
+      - Label: { default: Mailer (optional) }
+        Parameters: [SmtpHost, SmtpPort, SmtpUsername, SmtpPassword, MailFrom, MailFromName, SmtpStartTls]
+
+Conditions:
+  HttpsEnabled: !Equals [!Ref EnableHttps, 'true']
+  HttpsDisabled: !Not [!Equals [!Ref EnableHttps, 'true']]
+  SmtpConfigured: !Not [!Equals [!Ref SmtpHost, '']]
+  HasCustomDomain: !Not [!Equals [!Ref CustomDomain, '']]
+  HasMailFrom: !Not [!Equals [!Ref MailFrom, '']]
+  UsePrivateRegistry: !Not [!Equals [!Ref RegistryCredentialsArn, '']]
+  HasLicense: !Not [!Equals [!Ref LicenseKey, '']]
+
+Resources:
+  # ----------------------------- Networking ---------------------------------
+  Vpc:
+    Type: AWS::EC2::VPC
+    Properties:
+      CidrBlock: !Ref VpcCidr
+      EnableDnsSupport: true
+      EnableDnsHostnames: true
+      Tags: [{ Key: Name, Value: !Sub '${NamePrefix}-vpc' }]
+
+  InternetGateway:
+    Type: AWS::EC2::InternetGateway
+    Properties:
+      Tags: [{ Key: Name, Value: !Sub '${NamePrefix}-igw' }]
+
+  GatewayAttachment:
+    Type: AWS::EC2::VPCGatewayAttachment
+    Properties:
+      VpcId: !Ref Vpc
+      InternetGatewayId: !Ref InternetGateway
+
+  PublicSubnetA:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref Vpc
+      AvailabilityZone: !Select [0, !GetAZs '']
+      CidrBlock: !Select [0, !Cidr [!Ref VpcCidr, 4, 8]]
+      MapPublicIpOnLaunch: true
+      Tags: [{ Key: Name, Value: !Sub '${NamePrefix}-public-a' }]
+
+  PublicSubnetB:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref Vpc
+      AvailabilityZone: !Select [1, !GetAZs '']
+      CidrBlock: !Select [1, !Cidr [!Ref VpcCidr, 4, 8]]
+      MapPublicIpOnLaunch: true
+      Tags: [{ Key: Name, Value: !Sub '${NamePrefix}-public-b' }]
+
+  PublicRouteTable:
+    Type: AWS::EC2::RouteTable
+    Properties:
+      VpcId: !Ref Vpc
+      Tags: [{ Key: Name, Value: !Sub '${NamePrefix}-public-rt' }]
+
+  DefaultPublicRoute:
+    Type: AWS::EC2::Route
+    DependsOn: GatewayAttachment
+    Properties:
+      RouteTableId: !Ref PublicRouteTable
+      DestinationCidrBlock: 0.0.0.0/0
+      GatewayId: !Ref InternetGateway
+
+  SubnetARouteAssoc:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      RouteTableId: !Ref PublicRouteTable
+      SubnetId: !Ref PublicSubnetA
+
+  SubnetBRouteAssoc:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      RouteTableId: !Ref PublicRouteTable
+      SubnetId: !Ref PublicSubnetB
+
+  # ----------------------------- Security groups ----------------------------
+  ServiceSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: DeltaForge platform task ingress
+      VpcId: !Ref Vpc
+      SecurityGroupEgress:
+        - { IpProtocol: '-1', CidrIp: 0.0.0.0/0, Description: All egress }
+      Tags: [{ Key: Name, Value: !Sub '${NamePrefix}-svc-sg' }]
+
+  IngressHttps:
+    Type: AWS::EC2::SecurityGroupIngress
+    Condition: HttpsEnabled
+    Properties:
+      GroupId: !Ref ServiceSecurityGroup
+      IpProtocol: tcp
+      FromPort: 443
+      ToPort: 443
+      CidrIp: 0.0.0.0/0
+      Description: HTTPS
+
+  IngressHttpRedirect:
+    Type: AWS::EC2::SecurityGroupIngress
+    Condition: HttpsEnabled
+    Properties:
+      GroupId: !Ref ServiceSecurityGroup
+      IpProtocol: tcp
+      FromPort: 80
+      ToPort: 80
+      CidrIp: 0.0.0.0/0
+      Description: HTTP (ACME + redirect)
+
+  IngressConsole:
+    Type: AWS::EC2::SecurityGroupIngress
+    Condition: HttpsDisabled
+    Properties:
+      GroupId: !Ref ServiceSecurityGroup
+      IpProtocol: tcp
+      FromPort: 3031
+      ToPort: 3031
+      CidrIp: 0.0.0.0/0
+      Description: Web console (plain HTTP)
+
+  IngressControlPlane:
+    Type: AWS::EC2::SecurityGroupIngress
+    Condition: HttpsDisabled
+    Properties:
+      GroupId: !Ref ServiceSecurityGroup
+      IpProtocol: tcp
+      FromPort: 3000
+      ToPort: 3000
+      CidrIp: 0.0.0.0/0
+      Description: Control plane (plain HTTP)
+
+  DbSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: DeltaForge RDS ingress from the platform task
+      VpcId: !Ref Vpc
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 5432
+          ToPort: 5432
+          SourceSecurityGroupId: !Ref ServiceSecurityGroup
+          Description: PostgreSQL from platform task
+      Tags: [{ Key: Name, Value: !Sub '${NamePrefix}-db-sg' }]
+
+  EfsSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: DeltaForge EFS ingress from the platform task
+      VpcId: !Ref Vpc
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 2049
+          ToPort: 2049
+          SourceSecurityGroupId: !Ref ServiceSecurityGroup
+          Description: NFS from platform task
+      Tags: [{ Key: Name, Value: !Sub '${NamePrefix}-efs-sg' }]
+
+  # ----------------------------- PostgreSQL ---------------------------------
+  DbSubnetGroup:
+    Type: AWS::RDS::DBSubnetGroup
+    Properties:
+      DBSubnetGroupDescription: DeltaForge catalog subnet group
+      SubnetIds: [!Ref PublicSubnetA, !Ref PublicSubnetB]
+
+  Database:
+    Type: AWS::RDS::DBInstance
+    DeletionPolicy: Snapshot
+    UpdateReplacePolicy: Snapshot
+    Properties:
+      DBInstanceIdentifier: !Sub '${NamePrefix}-pg'
+      Engine: postgres
+      EngineVersion: !Ref DbEngineVersion
+      DBInstanceClass: !Ref DbInstanceClass
+      AllocatedStorage: !Ref DbAllocatedStorage
+      StorageType: gp3
+      StorageEncrypted: true
+      MasterUsername: dfadmin
+      MasterUserPassword: !Ref PgAdminPassword
+      DBName: deltaforge
+      DBSubnetGroupName: !Ref DbSubnetGroup
+      VPCSecurityGroups: [!Ref DbSecurityGroup]
+      PubliclyAccessible: false
+      MultiAZ: false
+      BackupRetentionPeriod: 7
+      DeletionProtection: false
+
+  # ----------------------------- Storage ------------------------------------
+  # Delta/zone table data. EFS/NFS can't do Delta's atomic commit; S3 (object
+  # store) can, and it is durable. The task role grants the engine access; the
+  # bucket URL is an output the operator uses when creating a zone.
+  TablesBucket:
+    Type: AWS::S3::Bucket
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+    Properties:
+      BucketName: !Sub '${NamePrefix}-tables-${AWS::AccountId}-${AWS::Region}'
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+          - ServerSideEncryptionByDefault: { SSEAlgorithm: AES256 }
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+
+  # EFS for /data (config + git workspace clones + engine instance/activation
+  # state under HOME=/data). The container runs as uid/gid 65532 (nonroot).
+  FileSystem:
+    Type: AWS::EFS::FileSystem
+    Properties:
+      Encrypted: true
+      PerformanceMode: generalPurpose
+      ThroughputMode: bursting
+      FileSystemTags: [{ Key: Name, Value: !Sub '${NamePrefix}-data' }]
+
+  MountTargetA:
+    Type: AWS::EFS::MountTarget
+    Properties:
+      FileSystemId: !Ref FileSystem
+      SubnetId: !Ref PublicSubnetA
+      SecurityGroups: [!Ref EfsSecurityGroup]
+
+  MountTargetB:
+    Type: AWS::EFS::MountTarget
+    Properties:
+      FileSystemId: !Ref FileSystem
+      SubnetId: !Ref PublicSubnetB
+      SecurityGroups: [!Ref EfsSecurityGroup]
+
+  DataAccessPoint:
+    Type: AWS::EFS::AccessPoint
+    Properties:
+      FileSystemId: !Ref FileSystem
+      PosixUser: { Uid: '65532', Gid: '65532' }
+      RootDirectory:
+        Path: /data
+        CreationInfo: { OwnerUid: '65532', OwnerGid: '65532', Permissions: '0755' }
+
+  CaddyAccessPoint:
+    Type: AWS::EFS::AccessPoint
+    Condition: HttpsEnabled
+    Properties:
+      FileSystemId: !Ref FileSystem
+      PosixUser: { Uid: '0', Gid: '0' }
+      RootDirectory:
+        Path: /caddy
+        CreationInfo: { OwnerUid: '0', OwnerGid: '0', Permissions: '0755' }
+
+  # ----------------------------- Secrets ------------------------------------
+  LicenseSecret:
+    Type: AWS::SecretsManager::Secret
+    Condition: HasLicense
+    Properties:
+      Name: !Sub '${NamePrefix}/license-key'
+      SecretString: !Ref LicenseKey
+
+  AdminPasswordSecret:
+    Type: AWS::SecretsManager::Secret
+    Properties:
+      Name: !Sub '${NamePrefix}/admin-password'
+      SecretString: !Ref AdminPassword
+
+  EngineerPasswordSecret:
+    Type: AWS::SecretsManager::Secret
+    Properties:
+      Name: !Sub '${NamePrefix}/engineer-password'
+      SecretString: !Ref EngineerPassword
+
+  # Full catalog connection string, composed from the generated password and the
+  # RDS endpoint, stored as a secret and injected to the task (sslmode=require).
+  DbUrlSecret:
+    Type: AWS::SecretsManager::Secret
+    Properties:
+      Name: !Sub '${NamePrefix}/db-url'
+      SecretString: !Sub 'postgres://dfadmin:${PgAdminPassword}@${Database.Endpoint.Address}:5432/deltaforge?sslmode=require'
+
+  SmtpPasswordSecret:
+    Type: AWS::SecretsManager::Secret
+    Condition: SmtpConfigured
+    Properties:
+      Name: !Sub '${NamePrefix}/smtp-password'
+      SecretString: !Ref SmtpPassword
+
+  # ----------------------------- IAM ----------------------------------------
+  ExecutionRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal: { Service: ecs-tasks.amazonaws.com }
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AmazonECSTaskExecutionRolePolicy
+      Policies:
+        - PolicyName: read-secrets
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action: secretsmanager:GetSecretValue
+                Resource:
+                  - !If [HasLicense, !Ref LicenseSecret, !Ref 'AWS::NoValue']
+                  - !Ref AdminPasswordSecret
+                  - !Ref EngineerPasswordSecret
+                  - !Ref DbUrlSecret
+                  - !If [SmtpConfigured, !Ref SmtpPasswordSecret, !Ref AWS::NoValue]
+                  - !If [UsePrivateRegistry, !Ref RegistryCredentialsArn, !Ref AWS::NoValue]
+
+  TaskRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal: { Service: ecs-tasks.amazonaws.com }
+            Action: sts:AssumeRole
+      Policies:
+        - PolicyName: tables-bucket-access
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action: ['s3:ListBucket', 's3:GetBucketLocation']
+                Resource: !GetAtt TablesBucket.Arn
+              - Effect: Allow
+                Action: ['s3:GetObject', 's3:PutObject', 's3:DeleteObject']
+                Resource: !Sub '${TablesBucket.Arn}/*'
+
+  # ----------------------------- Logging ------------------------------------
+  LogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub '/deltaforge/${NamePrefix}'
+      RetentionInDays: 30
+
+  # ----------------------------- ECS ----------------------------------------
+  Cluster:
+    Type: AWS::ECS::Cluster
+    Properties:
+      ClusterName: !Sub '${NamePrefix}-cluster'
+
+  TaskDefinition:
+    Type: AWS::ECS::TaskDefinition
+    Properties:
+      Family: !Sub '${NamePrefix}-platform'
+      RequiresCompatibilities: [FARGATE]
+      NetworkMode: awsvpc
+      Cpu: !Ref TaskCpu
+      Memory: !Ref TaskMemory
+      ExecutionRoleArn: !GetAtt ExecutionRole.Arn
+      TaskRoleArn: !GetAtt TaskRole.Arn
+      RuntimePlatform: { OperatingSystemFamily: LINUX, CpuArchitecture: X86_64 }
+      Volumes:
+        - Name: data
+          EFSVolumeConfiguration:
+            FilesystemId: !Ref FileSystem
+            TransitEncryption: ENABLED
+            AuthorizationConfig: { AccessPointId: !Ref DataAccessPoint, IAM: DISABLED }
+        - !If
+          - HttpsEnabled
+          - Name: caddy
+            EFSVolumeConfiguration:
+              FilesystemId: !Ref FileSystem
+              TransitEncryption: ENABLED
+              AuthorizationConfig: { AccessPointId: !Ref CaddyAccessPoint, IAM: DISABLED }
+          - !Ref AWS::NoValue
+      ContainerDefinitions:
+        - Name: platform
+          Image: !Ref Image
+          Essential: true
+          RepositoryCredentials: !If
+            - UsePrivateRegistry
+            - { CredentialsParameter: !Ref RegistryCredentialsArn }
+            - !Ref AWS::NoValue
+          MountPoints:
+            - { SourceVolume: data, ContainerPath: /data, ReadOnly: false }
+          PortMappings:
+            - { ContainerPort: 3000, Protocol: tcp }
+            - { ContainerPort: 3031, Protocol: tcp }
+          Environment:
+            - { Name: DELTA_FORGE_ADMIN_EMAIL, Value: !Ref AdminEmail }
+            - { Name: DELTA_FORGE_ENGINEER_EMAIL, Value: !Ref EngineerEmail }
+            - { Name: DELTA_FORGE_ACTIVATE_ON_BOOT, Value: '1' }
+            # Cloud license auto-provisioning: when no LicenseKey is set, bootstrap
+            # presigns sts:GetCallerIdentity with the task role and exchanges it at
+            # the console for a Community key. GetCallerIdentity needs no IAM grant.
+            - { Name: DELTA_FORGE_CLOUD, Value: aws }
+            - { Name: DELTA_FORGE_CONSOLE_URL, Value: !Ref ConsoleUrl }
+            - Name: DELTA_FORGE_PUBLIC_URL
+              Value: !If
+                - HttpsEnabled
+                - !If
+                  - HasCustomDomain
+                  - !Sub 'https://${CustomDomain}'
+                  - !Sub 'https://${LoadBalancer.DNSName}'
+                - !Sub 'http://${LoadBalancer.DNSName}:3031'
+            - { Name: AWS_REGION, Value: !Ref AWS::Region }
+            # Path-less zones default their table storage to the provisioned S3
+            # bucket instead of local/EFS disk, so Delta tables persist in the
+            # object store automatically (no need to paste the bucket URL when
+            # creating a zone). Mirrors DELTA_FORGE_DEFAULT_STORAGE_ROOT on Azure.
+            # Read by delta_forge_io::app_paths::default_zone_storage_root.
+            - { Name: DELTA_FORGE_DEFAULT_STORAGE_ROOT, Value: !Sub 's3://${TablesBucket}' }
+            # Post-deploy catalog seed (api::storage_seed, AWS mode): on first
+            # boot the server creates an IAM-role Credential Storage (Secrets
+            # Manager), an `aws_backend` S3 connection to this bucket, and an
+            # `aws` zone bound to that connection. Region comes from AWS_REGION
+            # above. Mirrors DELTA_FORGE_SEED_STORAGE_ACCOUNT on Azure.
+            - { Name: DELTA_FORGE_SEED_S3_BUCKET, Value: !Ref TablesBucket }
+            - !If
+              - SmtpConfigured
+              - { Name: DELTA_FORGE_MAIL_PROVIDER, Value: smtp }
+              - !Ref AWS::NoValue
+            - !If
+              - SmtpConfigured
+              - { Name: DELTA_FORGE_MAIL_FROM, Value: !If [HasMailFrom, !Ref MailFrom, !Ref SmtpUsername] }
+              - !Ref AWS::NoValue
+            - !If
+              - SmtpConfigured
+              - { Name: DELTA_FORGE_MAIL_FROM_NAME, Value: !Ref MailFromName }
+              - !Ref AWS::NoValue
+            - !If
+              - SmtpConfigured
+              - { Name: DELTA_FORGE_SMTP_HOST, Value: !Ref SmtpHost }
+              - !Ref AWS::NoValue
+            - !If
+              - SmtpConfigured
+              - { Name: DELTA_FORGE_SMTP_PORT, Value: !Ref SmtpPort }
+              - !Ref AWS::NoValue
+            - !If
+              - SmtpConfigured
+              - { Name: DELTA_FORGE_SMTP_USERNAME, Value: !Ref SmtpUsername }
+              - !Ref AWS::NoValue
+            - !If
+              - SmtpConfigured
+              - { Name: DELTA_FORGE_SMTP_STARTTLS, Value: !Ref SmtpStartTls }
+              - !Ref AWS::NoValue
+          Secrets:
+            - { Name: DELTA_FORGE_DB_URL, ValueFrom: !Ref DbUrlSecret }
+            - !If
+              - HasLicense
+              - { Name: DELTA_FORGE_LICENSE_KEY, ValueFrom: !Ref LicenseSecret }
+              - !Ref 'AWS::NoValue'
+            - { Name: DELTA_FORGE_ADMIN_PASSWORD, ValueFrom: !Ref AdminPasswordSecret }
+            - { Name: DELTA_FORGE_ENGINEER_PASSWORD, ValueFrom: !Ref EngineerPasswordSecret }
+            - !If
+              - SmtpConfigured
+              - { Name: DELTA_FORGE_SMTP_PASSWORD, ValueFrom: !Ref SmtpPasswordSecret }
+              - !Ref AWS::NoValue
+          LogConfiguration:
+            LogDriver: awslogs
+            Options:
+              awslogs-group: !Ref LogGroup
+              awslogs-region: !Ref AWS::Region
+              awslogs-stream-prefix: platform
+        - !If
+          - HttpsEnabled
+          - Name: caddy
+            Image: !Ref CaddyImage
+            Essential: true
+            DependsOn:
+              - { ContainerName: platform, Condition: START }
+            # Real HTTPS for the console. Custom domain -> trusted Let's Encrypt;
+            # bare LB DNS -> Caddy internal cert (avoids LE rate limits / no domain).
+            # Proxies to the console on localhost:3031.
+            EntryPoint: [caddy]
+            Command: !If
+              - HasCustomDomain
+              - ['reverse-proxy', '--from', !Ref CustomDomain, '--to', 'localhost:3031']
+              - ['reverse-proxy', '--from', !GetAtt LoadBalancer.DNSName, '--to', 'localhost:3031', '--internal-certs']
+            PortMappings:
+              - { ContainerPort: 443, Protocol: tcp }
+              - { ContainerPort: 80, Protocol: tcp }
+            MountPoints:
+              - { SourceVolume: caddy, ContainerPath: /data, ReadOnly: false }
+            LogConfiguration:
+              LogDriver: awslogs
+              Options:
+                awslogs-group: !Ref LogGroup
+                awslogs-region: !Ref AWS::Region
+                awslogs-stream-prefix: caddy
+          - !Ref AWS::NoValue
+
+  # ----------------------------- Load balancer ------------------------------
+  # Network LB gives a stable public DNS name in front of the Fargate task ENI
+  # (which gets a fresh IP on every restart). Caddy/the console terminate TLS.
+  LoadBalancer:
+    Type: AWS::ElasticLoadBalancingV2::LoadBalancer
+    Properties:
+      Name: !Sub '${NamePrefix}-nlb'
+      Type: network
+      Scheme: internet-facing
+      Subnets: [!Ref PublicSubnetA, !Ref PublicSubnetB]
+      LoadBalancerAttributes:
+        - { Key: load_balancing.cross_zone.enabled, Value: 'true' }
+
+  TargetGroupPrimary:
+    Type: AWS::ElasticLoadBalancingV2::TargetGroup
+    Properties:
+      Name: !Sub '${NamePrefix}-tg-primary'
+      VpcId: !Ref Vpc
+      Protocol: TCP
+      Port: !If [HttpsEnabled, 443, 3031]
+      TargetType: ip
+      HealthCheckProtocol: TCP
+
+  ListenerPrimary:
+    Type: AWS::ElasticLoadBalancingV2::Listener
+    Properties:
+      LoadBalancerArn: !Ref LoadBalancer
+      Protocol: TCP
+      Port: !If [HttpsEnabled, 443, 3031]
+      DefaultActions:
+        - { Type: forward, TargetGroupArn: !Ref TargetGroupPrimary }
+
+  TargetGroupSecondary:
+    Type: AWS::ElasticLoadBalancingV2::TargetGroup
+    Properties:
+      Name: !Sub '${NamePrefix}-tg-secondary'
+      VpcId: !Ref Vpc
+      Protocol: TCP
+      Port: !If [HttpsEnabled, 80, 3000]
+      TargetType: ip
+      HealthCheckProtocol: TCP
+
+  ListenerSecondary:
+    Type: AWS::ElasticLoadBalancingV2::Listener
+    Properties:
+      LoadBalancerArn: !Ref LoadBalancer
+      Protocol: TCP
+      Port: !If [HttpsEnabled, 80, 3000]
+      DefaultActions:
+        - { Type: forward, TargetGroupArn: !Ref TargetGroupSecondary }
+
+  # ----------------------------- Service ------------------------------------
+  Service:
+    Type: AWS::ECS::Service
+    DependsOn:
+      - ListenerPrimary
+      - ListenerSecondary
+      - MountTargetA
+      - MountTargetB
+    Properties:
+      ServiceName: !Sub '${NamePrefix}-platform'
+      Cluster: !Ref Cluster
+      TaskDefinition: !Ref TaskDefinition
+      DesiredCount: 1
+      LaunchType: FARGATE
+      HealthCheckGracePeriodSeconds: 300
+      DeploymentConfiguration:
+        MinimumHealthyPercent: 0
+        MaximumPercent: 100
+      NetworkConfiguration:
+        AwsvpcConfiguration:
+          AssignPublicIp: ENABLED
+          Subnets: [!Ref PublicSubnetA, !Ref PublicSubnetB]
+          SecurityGroups: [!Ref ServiceSecurityGroup]
+      LoadBalancers:
+        - ContainerName: !If [HttpsEnabled, caddy, platform]
+          ContainerPort: !If [HttpsEnabled, 443, 3031]
+          TargetGroupArn: !Ref TargetGroupPrimary
+        - ContainerName: !If [HttpsEnabled, caddy, platform]
+          ContainerPort: !If [HttpsEnabled, 80, 3000]
+          TargetGroupArn: !Ref TargetGroupSecondary
+
+# ---------------------------------------------------------------------------
+# Outputs
+# ---------------------------------------------------------------------------
+Outputs:
+  ConsoleUrl:
+    Description: DeltaForge web console / API URL.
+    Value: !If
+      - HttpsEnabled
+      - !If [HasCustomDomain, !Sub 'https://${CustomDomain}', !Sub 'https://${LoadBalancer.DNSName}']
+      - !Sub 'http://${LoadBalancer.DNSName}:3031'
+  LoadBalancerDns:
+    Description: Stable load balancer DNS name (point a custom-domain CNAME here).
+    Value: !GetAtt LoadBalancer.DNSName
+  PostgresEndpoint:
+    Description: RDS PostgreSQL endpoint.
+    Value: !GetAtt Database.Endpoint.Address
+  TablesBucketZoneRoot:
+    Description: S3 zone root to use when creating Delta/zone storage.
+    Value: !Sub 's3://${TablesBucket}'
+  AdminEmail:
+    Description: Seeded admin login.
+    Value: !Ref AdminEmail
+  SecretsPrefix:
+    Description: Secrets Manager name prefix holding the generated secrets.
+    Value: !Sub '${NamePrefix}/'

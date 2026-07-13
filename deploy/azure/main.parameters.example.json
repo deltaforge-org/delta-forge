@@ -1,0 +1,39 @@
+{
+  "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentParameters.json#",
+  "contentVersion": "1.0.0.0",
+  "parameters": {
+    "namePrefix": { "value": "deltaforge" },
+
+    "image": { "value": "ghcr.io/deltaforge-org/platform:latest" },
+    "registryServer": { "value": "ghcr.io" },
+    "registryUsername": { "value": "<github-username>" },
+    "registryPassword": { "value": "<github-token-with-read:packages>" },
+
+    "licenseKey": { "value": "<deltaforge-license-key>" },
+
+    "adminEmail": { "value": "admin@yourcompany.com" },
+    "engineerEmail": { "value": "engineer@yourcompany.com" },
+
+    "_comment_secrets": "adminPassword / engineerPassword / pgAdminPassword auto-generate and are stored in Key Vault. Set them only to override.",
+
+    "pgSkuName": { "value": "Standard_B1ms" },
+    "pgTier": { "value": "Burstable" },
+    "pgStorageGb": { "value": 32 },
+
+    "cpuCores": { "value": 3 },
+    "memoryGb": { "value": 8 },
+    "dataShareGb": { "value": 100 },
+
+    "_comment_smtp": "Optional. Set smtpHost to enable the SMTP mailer; otherwise mail is logged. smtpPassword is stored in Key Vault.",
+    "smtpHost": { "value": "" },
+    "smtpPort": { "value": 587 },
+    "smtpUsername": { "value": "" },
+    "smtpPassword": { "value": "" },
+    "mailFrom": { "value": "" },
+    "mailFromName": { "value": "DeltaForge" },
+    "smtpStartTls": { "value": true },
+
+    "enableHttps": { "value": true },
+    "customDomain": { "value": "" }
+  }
+}

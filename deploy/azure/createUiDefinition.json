@@ -1,0 +1,487 @@
+{
+  "$schema": "https://schema.management.azure.com/schemas/0.1.2-preview/CreateUIDefinition.MultiVm.json#",
+  "handler": "Microsoft.Azure.CreateUIDef",
+  "version": "0.1.2-preview",
+  "parameters": {
+    "config": {
+      "isWizard": false,
+      "basics": {
+        "description": "Deploy DeltaForge on Azure as a self-contained per-tier slot pool: a Platform Container App (control plane plus the always-on embedded compute node), a PostgreSQL flexible server catalog, ADLS Gen2 blob plus premium NFS storage, two Key Vaults, and a pool of idle compute slots that scale 0 to 1 on demand. Passwords and the license key are stored in Key Vault; the node auto-bootstraps the seeded accounts on first boot."
+      }
+    },
+    "basics": [
+      {
+        "name": "licenseInfo",
+        "type": "Microsoft.Common.InfoBox",
+        "visible": true,
+        "options": {
+          "icon": "Info",
+          "text": "Leave the license key blank to auto-provision a free Community license on first boot: the platform proves this Azure subscription to the DeltaForge console and receives a key automatically, so you do not need to register first. Paste a key only to pin a purchased or higher tier."
+        }
+      },
+      {
+        "name": "licenseKey",
+        "type": "Microsoft.Common.TextBox",
+        "label": "DeltaForge license key (optional)",
+        "toolTip": "Your DeltaForge license token. Leave blank to auto-provision a Community license from your Azure subscription. When supplied, it is stored as a secret in the deployment Key Vault and read by the platform at boot.",
+        "constraints": {
+          "required": false,
+          "regex": "^$|^.{8,}$",
+          "validationMessage": "Leave blank to auto-provision, or enter a license key of at least 8 characters."
+        }
+      },
+      {
+        "name": "namePrefix",
+        "type": "Microsoft.Common.TextBox",
+        "label": "Resource name prefix",
+        "defaultValue": "deltaforge",
+        "toolTip": "Short prefix used to name every resource (lowercase, must start with a letter, 3 to 16 characters). A globally-unique suffix is appended automatically.",
+        "constraints": {
+          "required": true,
+          "regex": "^[a-z][a-z0-9]{2,15}$",
+          "validationMessage": "Lowercase only, must start with a letter, 3 to 16 characters."
+        }
+      },
+      {
+        "name": "adminEmail",
+        "type": "Microsoft.Common.TextBox",
+        "label": "Admin account email",
+        "defaultValue": "admin@yourcompany.com",
+        "toolTip": "Email address for the seeded administrator account created on first boot.",
+        "constraints": {
+          "required": true,
+          "regex": "^[^@\\s]+@[^@\\s]+\\.[^@\\s]+$",
+          "validationMessage": "Enter a valid email address."
+        }
+      },
+      {
+        "name": "engineerEmail",
+        "type": "Microsoft.Common.TextBox",
+        "label": "Engineer account email",
+        "defaultValue": "engineer@yourcompany.com",
+        "toolTip": "Email address for the seeded engineer account created on first boot.",
+        "constraints": {
+          "required": true,
+          "regex": "^[^@\\s]+@[^@\\s]+\\.[^@\\s]+$",
+          "validationMessage": "Enter a valid email address."
+        }
+      },
+      {
+        "name": "adminPassword",
+        "type": "Microsoft.Common.PasswordBox",
+        "label": {
+          "password": "Admin account password",
+          "confirmPassword": "Confirm admin password"
+        },
+        "toolTip": "Password for the seeded administrator account. Stored in Key Vault and wired to the platform as DELTA_FORGE_ADMIN_PASSWORD.",
+        "constraints": {
+          "required": true,
+          "regex": "^.{12,}$",
+          "validationMessage": "Use at least 12 characters."
+        },
+        "options": {
+          "hideConfirmation": false
+        }
+      },
+      {
+        "name": "engineerPassword",
+        "type": "Microsoft.Common.PasswordBox",
+        "label": {
+          "password": "Engineer account password",
+          "confirmPassword": "Confirm engineer password"
+        },
+        "toolTip": "Password for the seeded engineer account. Stored in Key Vault and wired to the platform as DELTA_FORGE_ENGINEER_PASSWORD.",
+        "constraints": {
+          "required": true,
+          "regex": "^.{12,}$",
+          "validationMessage": "Use at least 12 characters."
+        },
+        "options": {
+          "hideConfirmation": false
+        }
+      }
+    ],
+    "steps": [
+      {
+        "name": "dbStep",
+        "label": "Database",
+        "elements": [
+          {
+            "name": "dbInfo",
+            "type": "Microsoft.Common.InfoBox",
+            "visible": true,
+            "options": {
+              "icon": "Info",
+              "text": "A managed Azure Database for PostgreSQL flexible server hosts the DeltaForge catalog. Choose a tier and SKU that match the chosen tier family, then set the administrator password."
+            }
+          },
+          {
+            "name": "pgAdminPassword",
+            "type": "Microsoft.Common.PasswordBox",
+            "label": {
+              "password": "PostgreSQL administrator password",
+              "confirmPassword": "Confirm PostgreSQL password"
+            },
+            "toolTip": "Administrator password for the PostgreSQL flexible server. Stored in Key Vault and used to build the catalog connection string.",
+            "constraints": {
+              "required": true,
+              "regex": "^.{12,}$",
+              "validationMessage": "Use at least 12 characters."
+            },
+            "options": {
+              "hideConfirmation": false
+            }
+          },
+          {
+            "name": "pgTier",
+            "type": "Microsoft.Common.DropDown",
+            "label": "PostgreSQL tier",
+            "defaultValue": "Burstable",
+            "toolTip": "Compute tier of the PostgreSQL flexible server. Burstable is the lowest cost; pick a SKU below that belongs to the same tier family.",
+            "constraints": {
+              "required": true,
+              "allowedValues": [
+                { "label": "Burstable", "value": "Burstable" },
+                { "label": "General Purpose", "value": "GeneralPurpose" },
+                { "label": "Memory Optimized", "value": "MemoryOptimized" }
+              ]
+            }
+          },
+          {
+            "name": "pgSkuName",
+            "type": "Microsoft.Common.TextBox",
+            "label": "PostgreSQL SKU name",
+            "defaultValue": "Standard_B1ms",
+            "toolTip": "PostgreSQL flexible server SKU. Burstable SKUs start with Standard_B (e.g. Standard_B1ms); General Purpose start with Standard_D; Memory Optimized start with Standard_E.",
+            "constraints": {
+              "required": true,
+              "regex": "^Standard_[BDE][A-Za-z0-9]+$",
+              "validationMessage": "Enter a valid PostgreSQL SKU, e.g. Standard_B1ms, Standard_D2s_v3, or Standard_E2s_v3."
+            }
+          },
+          {
+            "name": "pgStorageGb",
+            "type": "Microsoft.Common.TextBox",
+            "label": "PostgreSQL storage (GiB)",
+            "defaultValue": "32",
+            "toolTip": "Provisioned storage for the PostgreSQL flexible server, in GiB.",
+            "constraints": {
+              "required": true,
+              "regex": "^(3[2-9]|[4-9][0-9]|[1-9][0-9]{2,4}|65536)$",
+              "validationMessage": "Enter a whole number of GiB (minimum 32)."
+            }
+          },
+          {
+            "name": "dataShareGb",
+            "type": "Microsoft.Common.TextBox",
+            "label": "/data NFS file share size (GiB)",
+            "defaultValue": "100",
+            "toolTip": "Size of the premium NFS file share mounted at /data, in GiB. Premium minimum is 100; maximum is 102400.",
+            "constraints": {
+              "required": true,
+              "regex": "^(1[0-9]{2}|[2-9][0-9]{2}|[1-9][0-9]{3,4}|10[0-1][0-9]{3}|102[0-3][0-9]{2}|10240[0-9]|102400)$",
+              "validationMessage": "Enter a whole number between 100 and 102400."
+            }
+          }
+        ]
+      },
+      {
+        "name": "mailStep",
+        "label": "Email (optional)",
+        "elements": [
+          {
+            "name": "mailInfo",
+            "type": "Microsoft.Common.InfoBox",
+            "visible": true,
+            "options": {
+              "icon": "Info",
+              "text": "Leave the SMTP host blank to skip mailer setup (mail is logged instead of sent). You can configure email later from the console."
+            }
+          },
+          {
+            "name": "smtpHost",
+            "type": "Microsoft.Common.TextBox",
+            "label": "SMTP host",
+            "defaultValue": "",
+            "toolTip": "Hostname of your SMTP server. Leave blank to disable outbound email.",
+            "constraints": {
+              "required": false,
+              "regex": "^$|^[A-Za-z0-9.-]+$",
+              "validationMessage": "Enter a valid hostname or leave blank."
+            }
+          },
+          {
+            "name": "smtpPort",
+            "type": "Microsoft.Common.TextBox",
+            "label": "SMTP port",
+            "defaultValue": "587",
+            "toolTip": "TCP port of the SMTP server (commonly 587 for STARTTLS or 465 for implicit TLS).",
+            "constraints": {
+              "required": false,
+              "regex": "^([1-9][0-9]{0,4})$",
+              "validationMessage": "Enter a port number between 1 and 65535."
+            }
+          },
+          {
+            "name": "smtpUsername",
+            "type": "Microsoft.Common.TextBox",
+            "label": "SMTP username",
+            "defaultValue": "",
+            "toolTip": "Username for SMTP authentication. Leave blank if your relay does not require it.",
+            "constraints": {
+              "required": false,
+              "regex": "^.{0,256}$",
+              "validationMessage": "Maximum 256 characters."
+            }
+          },
+          {
+            "name": "smtpPassword",
+            "type": "Microsoft.Common.PasswordBox",
+            "label": {
+              "password": "SMTP password",
+              "confirmPassword": "Confirm SMTP password"
+            },
+            "toolTip": "Password for SMTP authentication. Stored in Key Vault when an SMTP host is configured.",
+            "constraints": {
+              "required": false
+            },
+            "options": {
+              "hideConfirmation": false
+            }
+          },
+          {
+            "name": "mailFrom",
+            "type": "Microsoft.Common.TextBox",
+            "label": "From address",
+            "defaultValue": "",
+            "toolTip": "Envelope From address for outbound email. Defaults to the SMTP username when blank.",
+            "constraints": {
+              "required": false,
+              "regex": "^$|^[^@\\s]+@[^@\\s]+\\.[^@\\s]+$",
+              "validationMessage": "Enter a valid email address or leave blank."
+            }
+          },
+          {
+            "name": "smtpStartTls",
+            "type": "Microsoft.Common.CheckBox",
+            "label": "Use STARTTLS",
+            "toolTip": "Enable STARTTLS when connecting to the SMTP server. Recommended for port 587.",
+            "defaultValue": true
+          }
+        ]
+      },
+      {
+        "name": "advancedStep",
+        "label": "Advanced",
+        "elements": [
+          {
+            "name": "advancedInfo",
+            "type": "Microsoft.Common.InfoBox",
+            "visible": true,
+            "options": {
+              "icon": "Info",
+              "text": "Every field here has a working default. Override container images only for a private or air-gapped registry, and adjust sizing only if you understand the Azure Container Apps Consumption limits (0.25 to 4 vCPU)."
+            }
+          },
+          {
+            "name": "imageSection",
+            "type": "Microsoft.Common.Section",
+            "label": "Container images",
+            "elements": [
+              {
+                "name": "image",
+                "type": "Microsoft.Common.TextBox",
+                "label": "Platform image",
+                "defaultValue": "ghcr.io/deltaforge-org/deltaforge-platform:latest",
+                "toolTip": "Fully-qualified DeltaForge Platform container image reference. Defaults to the published public image.",
+                "constraints": {
+                  "required": true,
+                  "regex": "^[A-Za-z0-9][A-Za-z0-9._/-]*(:[A-Za-z0-9._-]+)?(@sha256:[A-Fa-f0-9]{64})?$",
+                  "validationMessage": "Enter a valid container image reference, e.g. ghcr.io/deltaforge-org/deltaforge-platform:latest."
+                }
+              },
+              {
+                "name": "computeImage",
+                "type": "Microsoft.Common.TextBox",
+                "label": "Compute (worker) image",
+                "defaultValue": "ghcr.io/deltaforge-org/deltaforge-compute:latest",
+                "toolTip": "Fully-qualified DeltaForge Compute container image run by every slot in the pool. Defaults to the published public image.",
+                "constraints": {
+                  "required": true,
+                  "regex": "^[A-Za-z0-9][A-Za-z0-9._/-]*(:[A-Za-z0-9._-]+)?(@sha256:[A-Fa-f0-9]{64})?$",
+                  "validationMessage": "Enter a valid container image reference, e.g. ghcr.io/deltaforge-org/deltaforge-compute:latest."
+                }
+              }
+            ]
+          },
+          {
+            "name": "registrySection",
+            "type": "Microsoft.Common.Section",
+            "label": "Private registry (optional)",
+            "elements": [
+              {
+                "name": "registryServer",
+                "type": "Microsoft.Common.TextBox",
+                "label": "Registry login server",
+                "defaultValue": "",
+                "toolTip": "Private registry login server (e.g. myregistry.azurecr.io). Leave blank to pull the default public images.",
+                "constraints": {
+                  "required": false,
+                  "regex": "^$|^[A-Za-z0-9][A-Za-z0-9.-]*(:[0-9]+)?$",
+                  "validationMessage": "Enter a valid registry host or leave blank."
+                }
+              },
+              {
+                "name": "registryUsername",
+                "type": "Microsoft.Common.TextBox",
+                "label": "Registry username",
+                "defaultValue": "",
+                "toolTip": "Username for the private registry. Only needed when a registry login server is set.",
+                "constraints": {
+                  "required": false,
+                  "regex": "^.{0,256}$",
+                  "validationMessage": "Maximum 256 characters."
+                }
+              },
+              {
+                "name": "registryPassword",
+                "type": "Microsoft.Common.PasswordBox",
+                "label": {
+                  "password": "Registry password / token",
+                  "confirmPassword": "Confirm registry password"
+                },
+                "toolTip": "Password or token for the private registry. Only needed when a registry login server is set.",
+                "constraints": {
+                  "required": false
+                },
+                "options": {
+                  "hideConfirmation": false
+                }
+              }
+            ]
+          },
+          {
+            "name": "sizingSection",
+            "type": "Microsoft.Common.Section",
+            "label": "Sizing",
+            "elements": [
+              {
+                "name": "cpuCores",
+                "type": "Microsoft.Common.DropDown",
+                "label": "Platform vCPU",
+                "defaultValue": "2.0",
+                "toolTip": "vCPU allocated to the Platform container. Azure Container Apps Consumption supports 0.25 to 4 vCPU and the value must pair with memory.",
+                "constraints": {
+                  "required": true,
+                  "allowedValues": [
+                    { "label": "0.5", "value": "0.5" },
+                    { "label": "1.0", "value": "1.0" },
+                    { "label": "2.0", "value": "2.0" },
+                    { "label": "4.0", "value": "4.0" }
+                  ]
+                }
+              },
+              {
+                "name": "memory",
+                "type": "Microsoft.Common.DropDown",
+                "label": "Platform memory",
+                "defaultValue": "4Gi",
+                "toolTip": "Memory allocated to the Platform container. Must pair with the chosen vCPU per the Azure Container Apps Consumption ratio.",
+                "constraints": {
+                  "required": true,
+                  "allowedValues": [
+                    { "label": "1Gi", "value": "1Gi" },
+                    { "label": "2Gi", "value": "2Gi" },
+                    { "label": "4Gi", "value": "4Gi" },
+                    { "label": "8Gi", "value": "8Gi" }
+                  ]
+                }
+              },
+              {
+                "name": "slotCpuCores",
+                "type": "Microsoft.Common.DropDown",
+                "label": "Compute slot vCPU",
+                "defaultValue": "2.0",
+                "toolTip": "vCPU allocated to each compute slot container. Azure Container Apps Consumption supports 0.25 to 4 vCPU and the value must pair with slot memory.",
+                "constraints": {
+                  "required": true,
+                  "allowedValues": [
+                    { "label": "0.5", "value": "0.5" },
+                    { "label": "1.0", "value": "1.0" },
+                    { "label": "2.0", "value": "2.0" },
+                    { "label": "4.0", "value": "4.0" }
+                  ]
+                }
+              },
+              {
+                "name": "slotMemory",
+                "type": "Microsoft.Common.DropDown",
+                "label": "Compute slot memory",
+                "defaultValue": "4Gi",
+                "toolTip": "Memory allocated to each compute slot container. Must pair with the chosen slot vCPU per the Azure Container Apps Consumption ratio.",
+                "constraints": {
+                  "required": true,
+                  "allowedValues": [
+                    { "label": "1Gi", "value": "1Gi" },
+                    { "label": "2Gi", "value": "2Gi" },
+                    { "label": "4Gi", "value": "4Gi" },
+                    { "label": "8Gi", "value": "8Gi" }
+                  ]
+                }
+              }
+            ]
+          },
+          {
+            "name": "scalingSection",
+            "type": "Microsoft.Common.Section",
+            "label": "Autoscaler credential (optional)",
+            "elements": [
+              {
+                "name": "scalingCredentialRef",
+                "type": "Microsoft.Common.TextBox",
+                "label": "Scaling credential reference",
+                "defaultValue": "",
+                "toolTip": "Vault entry id holding the Azure service-principal credential the provisioner uses to flip slot replicas via ARM. Leave blank at deploy time and add it post-deploy per README-slot-pool.md.",
+                "constraints": {
+                  "required": false,
+                  "regex": "^.{0,512}$",
+                  "validationMessage": "Maximum 512 characters."
+                }
+              }
+            ]
+          }
+        ]
+      }
+    ],
+    "outputs": {
+      "location": "[location()]",
+      "namePrefix": "[basics('namePrefix')]",
+      "licenseKey": "[basics('licenseKey')]",
+      "adminEmail": "[basics('adminEmail')]",
+      "engineerEmail": "[basics('engineerEmail')]",
+      "adminPassword": "[basics('adminPassword')]",
+      "engineerPassword": "[basics('engineerPassword')]",
+      "pgAdminPassword": "[steps('dbStep').pgAdminPassword]",
+      "pgTier": "[steps('dbStep').pgTier]",
+      "pgSkuName": "[steps('dbStep').pgSkuName]",
+      "pgStorageGb": "[int(steps('dbStep').pgStorageGb)]",
+      "dataShareGb": "[int(steps('dbStep').dataShareGb)]",
+      "smtpHost": "[steps('mailStep').smtpHost]",
+      "smtpPort": "[if(empty(steps('mailStep').smtpPort), 587, int(steps('mailStep').smtpPort))]",
+      "smtpUsername": "[steps('mailStep').smtpUsername]",
+      "smtpPassword": "[steps('mailStep').smtpPassword]",
+      "mailFrom": "[steps('mailStep').mailFrom]",
+      "smtpStartTls": "[steps('mailStep').smtpStartTls]",
+      "image": "[steps('advancedStep').imageSection.image]",
+      "computeImage": "[steps('advancedStep').imageSection.computeImage]",
+      "registryServer": "[steps('advancedStep').registrySection.registryServer]",
+      "registryUsername": "[steps('advancedStep').registrySection.registryUsername]",
+      "registryPassword": "[steps('advancedStep').registrySection.registryPassword]",
+      "cpuCores": "[steps('advancedStep').sizingSection.cpuCores]",
+      "memory": "[steps('advancedStep').sizingSection.memory]",
+      "slotCpuCores": "[steps('advancedStep').sizingSection.slotCpuCores]",
+      "slotMemory": "[steps('advancedStep').sizingSection.slotMemory]",
+      "scalingCredentialRef": "[steps('advancedStep').scalingSection.scalingCredentialRef]"
+    }
+  }
+}

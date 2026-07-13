@@ -1,0 +1,110 @@
+#!/usr/bin/env bash
+# DeltaForge Platform node bootstrap (Ubuntu + Docker). Idempotent: safe to
+# re-run on every boot. Rendered by Terraform (templatefile); $${...} are shell
+# expansions, $${...} doubled to survive Terraform interpolation.
+set -euo pipefail
+exec > >(tee /var/log/deltaforge-startup.log) 2>&1
+echo "[deltaforge] startup begin $(date -u)"
+
+# --- one-time host setup -----------------------------------------------------
+if ! command -v docker >/dev/null 2>&1; then
+  export DEBIAN_FRONTEND=noninteractive
+  apt-get update
+  apt-get install -y docker.io jq curl
+  systemctl enable --now docker
+fi
+
+# --- mount the persistent /data disk ----------------------------------------
+DISK=/dev/disk/by-id/google-deltaforge-data
+MOUNT=/opt/deltaforge-data
+mkdir -p "$MOUNT"
+if ! blkid "$DISK" >/dev/null 2>&1; then
+  mkfs.ext4 -F -m 0 "$DISK"
+fi
+grep -q "$MOUNT" /etc/fstab || echo "$DISK $MOUNT ext4 defaults,nofail 0 2" >> /etc/fstab
+mountpoint -q "$MOUNT" || mount "$MOUNT"
+mkdir -p "$MOUNT/data" "$MOUNT/caddy"
+# Container runs as uid/gid 65532 (nonroot); HOME=/data must be writable.
+chown -R 65532:65532 "$MOUNT/data"
+
+# --- fetch secrets via the VM service account (Secret Manager REST) ----------
+metadata() { curl -s -H "Metadata-Flavor: Google" "http://metadata.google.internal/computeMetadata/v1/$1"; }
+TOKEN=$(metadata "instance/service-accounts/default/token" | jq -r .access_token)
+get_secret() {
+  curl -s -H "Authorization: Bearer $TOKEN" \
+    "https://secretmanager.googleapis.com/v1/projects/${project_id}/secrets/$1/versions/latest:access" \
+    | jq -r '.payload.data' | base64 -d
+}
+DB_URL=$(get_secret "${db_url_secret}")
+LICENSE=$(get_secret "${license_secret}")
+# Sentinel from Terraform (GCP secret versions cannot be empty): clear it so the
+# platform auto-provisions a Community license from its instance identity.
+if [ "$LICENSE" = "auto-provision" ]; then LICENSE=""; fi
+ADMIN_PW=$(get_secret "${admin_pw_secret}")
+ENGINEER_PW=$(get_secret "${engineer_pw_secret}")
+%{ if smtp_configured ~}
+SMTP_PW=$(get_secret "${smtp_pw_secret}")
+%{ endif ~}
+
+# --- optional private registry login ----------------------------------------
+%{ if registry_secret != "" ~}
+REG=$(get_secret "${registry_secret}")
+echo "$REG" | jq -r .password | docker login "$(echo "$REG" | jq -r .server)" -u "$(echo "$REG" | jq -r .username)" --password-stdin
+%{ endif ~}
+
+# --- platform container ------------------------------------------------------
+# --network host: the engine binds 0.0.0.0:3000 (control plane) and :3031
+# (console / web bridge) directly on the host; Caddy reaches it on localhost.
+docker pull "${image}"
+docker rm -f deltaforge-platform >/dev/null 2>&1 || true
+ARGS=(
+  -d --name deltaforge-platform --restart unless-stopped
+  --network host
+  -v "$MOUNT/data:/data"
+  -e DELTA_FORGE_DB_URL="$DB_URL"
+  -e DELTA_FORGE_LICENSE_KEY="$LICENSE"
+  # Cloud license auto-provisioning: when LICENSE is empty, bootstrap presents
+  # this VM's Google instance identity token to the console for a Community key.
+  -e DELTA_FORGE_CLOUD=gcp
+  -e DELTA_FORGE_CONSOLE_URL="${console_url}"
+  -e DELTA_FORGE_ADMIN_PASSWORD="$ADMIN_PW"
+  -e DELTA_FORGE_ENGINEER_PASSWORD="$ENGINEER_PW"
+  -e DELTA_FORGE_ADMIN_EMAIL="${admin_email}"
+  -e DELTA_FORGE_ENGINEER_EMAIL="${engineer_email}"
+  -e DELTA_FORGE_ACTIVATE_ON_BOOT=1
+  -e DELTA_FORGE_PUBLIC_URL="${public_url}"
+  -e DELTA_FORGE_DEFAULT_STORAGE_ROOT="${tables_bucket_zone_root}"
+  # Post-deploy catalog seed (api::storage_seed, GCP mode): on first boot the
+  # server creates an ADC Credential Storage (Secret Manager), a `gcp_backend`
+  # GCS connection to this bucket, and a `gcp` zone bound to that connection.
+  # Mirrors DELTA_FORGE_SEED_STORAGE_ACCOUNT on Azure / _S3_BUCKET on AWS.
+  -e DELTA_FORGE_SEED_GCS_BUCKET="${tables_bucket_name}"
+  -e DELTA_FORGE_SEED_GCP_PROJECT="${project_id}"
+)
+%{ if smtp_configured ~}
+ARGS+=(
+  -e DELTA_FORGE_MAIL_PROVIDER=smtp
+  -e DELTA_FORGE_MAIL_FROM="${mail_from}"
+  -e DELTA_FORGE_MAIL_FROM_NAME="${mail_from_name}"
+  -e DELTA_FORGE_SMTP_HOST="${smtp_host}"
+  -e DELTA_FORGE_SMTP_PORT="${smtp_port}"
+  -e DELTA_FORGE_SMTP_USERNAME="${smtp_username}"
+  -e DELTA_FORGE_SMTP_STARTTLS="${smtp_starttls}"
+  -e DELTA_FORGE_SMTP_PASSWORD="$SMTP_PW"
+)
+%{ endif ~}
+docker run "$${ARGS[@]}" "${image}"
+
+# --- Caddy HTTPS sidecar -----------------------------------------------------
+%{ if enable_https ~}
+# Custom domain -> trusted Let's Encrypt; bare IP -> Caddy internal cert
+# (avoids LE issuing against a raw IP). Proxies to the console on localhost:3031.
+docker pull "${caddy_image}"
+docker rm -f deltaforge-caddy >/dev/null 2>&1 || true
+docker run -d --name deltaforge-caddy --restart unless-stopped \
+  --network host \
+  -v "$MOUNT/caddy:/data" \
+  "${caddy_image}" caddy reverse-proxy --from "${caddy_domain}" --to localhost:3031 ${caddy_internal}
+%{ endif ~}
+
+echo "[deltaforge] startup done $(date -u)"
