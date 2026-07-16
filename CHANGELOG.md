@@ -9,6 +9,75 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 Initial repository bootstrap. No public releases yet.
 
+## [1.2.0] - 2026-07-16
+
+The DeltaForge platform: the desktop app, the command-line interface, and the control-plane server. This is an architecture release. The platform is now a compute gateway rather than a single embedded process, which is what unlocks scale-to-zero cloud compute, and it adds AI models you can call directly from SQL.
+
+### AI models and AI functions in SQL
+
+- New `CREATE MODEL` command registers an external large language model as a first-class catalog object, with `ALTER MODEL`, `DROP MODEL`, `DESCRIBE MODEL`, and `SHOW MODELS` to manage it. Providers supported are OpenAI, Azure OpenAI, Anthropic, and Ollama, and the model's credentials are held in the same vault-backed credential storage as your data connections.
+- Call the model per row straight from SQL with a family of AI functions: `AI_GENERATE` and `AI_GENERATE_EMBEDDINGS` for open-ended generation and vectorisation, plus task functions `AI_EXTRACT`, `AI_CLASSIFY`, `AI_SUMMARIZE`, `AI_TRANSLATE`, `AI_FIX_GRAMMAR`, and `AI_ANALYZE_SENTIMENT`.
+- `AI_EXTRACT` returns clean JSON, ready to use directly in your query.
+- A new AI and LLM demo category (with its own icon in the Formats sidebar) shows these functions end to end against sample data.
+
+### New platform architecture: the compute gateway
+
+- The desktop app supervises the control-plane server and a compute worker as managed background services, and routes interactive queries to that worker through a compute gateway. Startup gates on observed health signals rather than fixed delays, so the app opens only once the backend genuinely answers, and it tears the services down cleanly on exit.
+- This is the same routing model the drivers and CLI use (the control plane hands out node addresses, clients talk to a node directly), so all of the platform's own queries flow through one path.
+- Behaviour on the desktop is unchanged for you: a co-located worker is spawned automatically. The split is what makes the cloud autoscaler below possible.
+
+### Scale-to-zero cloud compute
+
+- Cloud deployments run a per-slot autoscaler pool: compute slots sit at zero replicas until a query arrives, the control plane warms a slot on demand, and idle slots drain back down. You pay for compute only while queries run.
+- The Azure deployment is three cooperating container apps (the control-plane server, the web GUI, and the compute pool) on managed-TLS endpoints, with the browser's query routed to the control plane that owns the autoscaler so a cold pool warms on demand.
+- The autoscaler authenticates to the cloud with the deployment's own managed identity by default, so no separate service-principal secret is required to scale slots.
+
+### Multi-cloud deployment
+
+- One-shot single-node deployment covers Azure, AWS, and GCP from native per-cloud infrastructure-as-code, and a fresh instance seeds its own catalog: the deployment's object store (Azure Blob, AWS S3, or GCP GCS), its credential storage, and a ready-to-use zone are created for you on first boot.
+- Cloud table storage uses ambient credentials on every cloud (managed identity on Azure, task or pod role on AWS, service account on GCP); no static access keys are stored.
+- Cloud zone roots resolve consistently to the deployment's storage account across the control plane, web API, and every compute node, so tables land where you expect on every cloud.
+
+### Row-level index acceleration for UPDATE and DELETE
+
+- Keyed `UPDATE` and `DELETE` statements use a row-level index to jump straight to the affected rows instead of scanning the table, and `SHOW STATS` reports whether the index served the statement.
+
+### Graph on cloud storage
+
+- Graph analytics run directly against cloud object stores (`abfss://` and `s3://`): the graph CSR topology and its `_delta_log` are resolved through the cloud-aware filesystem, and CSR provenance is captured so repeat graph queries reuse the built structure instead of re-scanning the whole table.
+
+### Iceberg
+
+- Date and timestamp partition values written by other engines read back correctly, so partitioned Iceberg tables from external writers line up with DeltaForge's own view of them.
+
+### Pipelines and dashboards
+
+- The pipeline health dashboard was reworked with a recency-weighted health signal, so a pipeline's recent runs carry more weight than stale history when its status is shown.
+- Pipeline status refreshes automatically after you run a pipeline, and manual schedule runs honour each pipeline's fail-fast setting.
+- The landing dashboard surfaces usage stats at a glance.
+
+### Query Explorer and desktop polish
+
+- The Running query loader stays smooth, alive, and cancellable, and shows a distinct compute-node spin-up state so a cold cloud slot reads as "starting" rather than a stalled query.
+- Connection cards are editable in place (with the entity reference shown read-only), the Credential Storage "Test" action is cancellable, and page headers wrap their stats and actions on narrow viewports instead of crushing the title.
+- The cloud web console resolves its control-plane address from the running deployment, so Connected Devices and compute-token pages work when the console is served from the cloud.
+
+### Accessibility
+
+- Text contrast was raised to WCAG AA across the catalog, admin, and workflow pages.
+
+### Licensing
+
+- A configured daily DFCU limit of 0 means unlimited for paid tiers.
+
+### Fixes and improvements
+
+- Credential, zone, and Key Vault resolution reports clear, specific errors, so a misconfigured cloud connection surfaces the real cause.
+- The VS Code extension keeps its loading spinner smooth during long queries, and catalog insert actions open a new SQL editor when none is focused.
+- GUI activity is attributed as `gui` in the usage dashboards.
+
+<!-- built from 8136ae039abe1390bc8543c7228bff468985fff2 -->
+
 ## [1.0.8] - 2026-06-24
 
 The DeltaForge platform: the desktop app, the command-line interface, and the control-plane server.
